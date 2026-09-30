@@ -1,0 +1,24 @@
+# Houdini
+backup/
+Houdini/render/
+Houdini/logs/
+*.hip_bak*
+houdini_temp/
+
+# Godot
+.godot/
+*.translation
+export/
+Godot/**/build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE / OS
+.idea/
+.vscode/
+*.DotSettings.user
+Thumbs.db
+.DS_Store
