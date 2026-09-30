@@ -1,0 +1,14 @@
+{
+  "name": "Calib_Box",
+  "description": "100 cm cube on the origin. Verifies cm_per_pixel and pivot placement (expected width = 100 / cm_per_pixel px).",
+  "source": {
+    "type": "procedural",
+    "builder": "calibration_box"
+  },
+  "cell_px": [256, 256],
+  "pivot_px": [128, 160],
+  "directions": ["S"],
+  "animations": [
+    {"name": "Still", "frames": 1, "fps": 1, "loop": false}
+  ]
+}

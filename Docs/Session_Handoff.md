@@ -18,17 +18,17 @@
 - Architecture: server tracks pure data only; clients spawn cosmetic actors. Mirrored view:
   each client sees own board at bottom, opponent's flipped on top.
 - Visual target: 2.5D. Unlit pre-rendered sprites (from Houdini) on a lit, statically-baked
-  3D board. Ortho camera, 15 deg tilt. Spec: UE repo `Visual_Overhaul_Plan.md` and
+  3D board. Ortho camera, 40 deg tilt (decided 2026-09-30). Spec: UE repo `Visual_Overhaul_Plan.md` and
   `Houdini_Quickstart.md`.
 - Backends: EOS is staying. Commerce backend (LootLocker etc.) undecided.
 
-## Canonical Constants (from Houdini_Quickstart.md)
+## Canonical Constants (source of truth: `Houdini/config/Canonical.json`)
 
 | Constant | Value |
 |---|---|
 | Projection | Orthographic |
-| Camera tilt | 15 deg from vertical (UNDER REVIEW - see findings #4) |
-| Key/sun light | azimuth 135 deg, elevation 45 deg, slightly warm |
+| Camera tilt | 40 deg from vertical (decided 2026-09-30, was 15) |
+| Key/sun light | azimuth 135 deg (from screen lower-right), elevation 45 deg, slightly warm. Arena orientation not designed yet; match the level sun to this screen-space direction later |
 | Sprite output | PNG, sRGB, transparent bg, power-of-2 |
 | Units | 1 unit = 1 cm; tower slot ~100-150 cm; board 5x3 slots per player |
 
@@ -42,8 +42,8 @@ Sprite/visual plan issues:
    premultiplied edges go dark. For Masked: straight alpha + color dilation/edge bleed.
 3. **No pixel-density or pivot standard.** Every sprite needs a fixed world-cm-per-pixel
    and a foot pivot written to metadata, else sizes/grounding drift.
-4. **15 deg tilt is near top-down.** Kingdom Rush style 3/4 is ~30-45 deg. Upright
-   character planes at 15 deg may read as standing cards. Decide during the quickstart lap.
+4. **15 deg tilt is near top-down.** RESOLVED 2026-09-30: tilt set to 40 deg after comparison
+   renders (15/30/45); UE spec docs updated to match.
 5. UE code gives each sprite actor its own MID and ticks `CurrentFrame`. OK for now; later
    use Custom Primitive Data + material time offset to batch and drop ticks.
 6. Recommendation: bake environment in Houdini and export (glTF/FBX) rather than live
@@ -76,7 +76,28 @@ UE doc drift (for step 3, doc cleanup - UE repo `Documentation/GAME_PROJECTS/Tow
   - If EOS sessions or headless server fight back -> stay on UE with confidence.
 - The Houdini sprite pipeline is engine-agnostic; proceed regardless.
 
-## Step 1 Plan - Houdini Sprite Generator
+## Step 1 Status (2026-09-29) - generator working end-to-end
+
+Done and verified - details in `Docs/Sprite_Pipeline.md`:
+- `sprite_gen.py` + `Canonical.json` + per-asset configs. StandIn_Blocky: 8 dirs x (Idle 8 + Walk 12)
+  at 128 px, 0.75 cm/px -> 2048x2048 sheet + JSON in ~100 s.
+- Camera/pivot math verified with `Calib_Box` + `check_calibration.py` (0.4 px error).
+- Straight alpha + full edge bleed (resolves finding #2), fixed cm-per-pixel + foot pivot in JSON
+  (finding #3), 8 directions via asset yaw with optional west mirroring (finding #1).
+- Tilt decided: 40 deg (user chose 30-45; 40 picked as best character read vs board depth).
+  Re-rendered StandIn_Blocky (no border clipping, content rows 15-118 of 128) and Calib_Box
+  (0.33 px error, PASS) at 40 deg.
+- Light: 135 deg / 45 deg kept; arena not designed yet, so engine sun mapping is deferred.
+- Policy: older spec docs (UE repo Documentation) are updated as decisions are made.
+  Done for tilt/light in `Houdini_Quickstart.md`, `Visual_Overhaul_Plan.md`, `CURRENT_STATUS.md`.
+  Sprite plane rotation in docs is now `FRotator(-50,0,0)`; code still uses `FRotator(0,90,15)`
+  [Unverified which is right for UE's Plane mesh - check in-engine].
+
+Next for step 1:
+- Run a real hip asset through the `"type": "hip"` source path (untested).
+- Optional: engine importer for the JSON once the engine is chosen.
+
+## Step 1 Plan - Houdini Sprite Generator (original)
 
 Goal: hython-driven, data-driven generator that renders an asset to directional sprite atlases.
 - `Houdini/config/Canonical.json` - camera tilt, light az/el/color, cm-per-pixel, directions.
@@ -89,6 +110,6 @@ Goal: hython-driven, data-driven generator that renders an asset to directional 
 - Engine importers (UE DataTable/MI or Godot resources) consume the JSON later.
 
 ## Open Questions
-- Final camera tilt (15 vs ~30-45 deg).
 - Direction count (4 vs 8).
 - Commerce backend choice.
+- Arena world orientation (determines the level sun yaw that matches the 135 deg sprite light).

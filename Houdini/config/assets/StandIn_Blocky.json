@@ -1,0 +1,16 @@
+{
+  "name": "StandIn_Blocky",
+  "description": "Procedural blocky stand-in character used to prove the sprite loop end-to-end.",
+  "source": {
+    "type": "procedural",
+    "builder": "blocky_standin"
+  },
+  "cell_px": [128, 128],
+  "pivot_px": [64, 100],
+  "animations": [
+    {"name": "Idle", "frames": 8, "fps": 8, "loop": true,
+     "set_parms": {"walk": 0, "cycle": 8, "start": 1}},
+    {"name": "Walk", "frames": 12, "fps": 12, "loop": true,
+     "set_parms": {"walk": 1, "cycle": 12, "start": 1}}
+  ]
+}

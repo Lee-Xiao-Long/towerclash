@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "conventions": {
+    "units": "1 scene unit = 1 cm. +Y up.",
+    "ground": "Ground plane is Y=0. North = screen-up (-Z, away from camera), East = screen-right (+X), South = toward camera (+Z).",
+    "asset_front": "Assets face +Z (South, toward the camera) at yaw 0, feet on Y=0, pivot at the origin.",
+    "direction_yaw": "Direction yaw rotates the asset about +Y; 0=S, 90=E, 180=N, 270=W (right-handed, +Z toward +X).",
+    "light_azimuth": "Compass azimuth the light comes FROM, clockwise from North (screen-up). 135 = from South-East (lower-right, camera side). Decided 2026-09-30; the in-engine sun must be matched to this once the arena exists.",
+    "camera_tilt": "Degrees from straight-down. 0 = top-down, 90 = side-on."
+  },
+  "camera": {
+    "projection": "ortho",
+    "tilt_from_vertical_deg": 40.0,
+    "distance_cm": 2000.0
+  },
+  "key_light": {
+    "azimuth_deg": 135.0,
+    "elevation_deg": 45.0,
+    "color": [1.0, 0.93, 0.82],
+    "intensity": 1.0,
+    "exposure": 2.5,
+    "angle_deg": 1.0
+  },
+  "fill_light": {
+    "color": [0.62, 0.72, 0.9],
+    "intensity": 0.8
+  },
+  "sprite": {
+    "cm_per_pixel": 0.75,
+    "direction_names": ["S", "SE", "E", "NE", "N", "NW", "W", "SW"],
+    "mirror_west": false,
+    "alpha": "straight",
+    "edge_bleed": true,
+    "max_sheet_px": 2048,
+    "power_of_two": true
+  },
+  "render": {
+    "engine": "cpu",
+    "samples": 32,
+    "pixel_filter_width": 1.5
+  }
+}
