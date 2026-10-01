@@ -1,0 +1,7 @@
+{
+  "Basic":  {"damage": 10, "range": 400, "rate": 1.0, "targeting": "FurthestAlongPath", "tint": [0.95, 0.95, 0.95]},
+  "Sniper": {"damage": 50, "range": 800, "rate": 0.3, "targeting": "HighestHealth", "tint": [0.45, 0.6, 1.0]},
+  "Rapid":  {"damage": 3, "range": 350, "rate": 4.0, "targeting": "LowestHealth", "tint": [1.0, 0.9, 0.3]},
+  "Splash": {"damage": 15, "range": 350, "rate": 0.8, "targeting": "ClosestDistance", "splash_radius": 150, "tint": [1.0, 0.5, 0.25]},
+  "Slow":   {"damage": 5, "range": 300, "rate": 2.0, "targeting": "MostRecent", "slow_factor": 0.5, "slow_time": 2.0, "tint": [0.4, 1.0, 0.9]}
+}

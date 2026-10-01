@@ -1,0 +1,14 @@
+{
+  "_note": "One entry per round. spawns are expanded in order and spread over spawn_window_s. Boss every 3rd round.",
+  "rounds": [
+    {"duration_s": 25, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Soldier", 4], ["Scout", 3]]},
+    {"duration_s": 25, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Soldier", 6], ["Scout", 4]]},
+    {"duration_s": 30, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Soldier", 6], ["Boss", 1]]},
+    {"duration_s": 25, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Tank", 3], ["Soldier", 8], ["Scout", 6]]},
+    {"duration_s": 25, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Swarm", 2], ["Tank", 3], ["Soldier", 6]]},
+    {"duration_s": 30, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Tank", 4], ["Boss", 1]]},
+    {"duration_s": 25, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Healer", 3], ["Tank", 4], ["Soldier", 8], ["Swarm", 2]]},
+    {"duration_s": 25, "intermission_s": 8, "spawn_window_s": 15, "spawns": [["Healer", 4], ["Tank", 6], ["Scout", 10]]},
+    {"duration_s": 35, "intermission_s": 0, "spawn_window_s": 15, "spawns": [["Tank", 6], ["Healer", 4], ["Boss", 1]]}
+  ]
+}

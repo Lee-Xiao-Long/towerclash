@@ -1,7 +1,8 @@
 # Session Handoff
 
 **Created:** 2026-09-29 (carried over from a Copilot CLI session run inside the UE project repo)
-**Agreed work order:** 1) Houdini sprite generator -> 2) Godot spike -> 3) UE doc cleanup
+**Agreed work order:** 1) Houdini sprite generator -> 2) Godot spike (done 2026-10-01, see
+`Godot_Spike.md`) -> 3) overall doc update (UE repo doc drift below) -> back to UE / iOS device test
 
 ---
 
@@ -66,7 +67,7 @@ UE doc drift (for step 3, doc cleanup - UE repo `Documentation/GAME_PROJECTS/Tow
 - UE keeps: mature replication/dedicated server, Redpoint EOS (UE-only), existing MLS plugin
   and hard-won EOS lifecycle.
 - Godot EOS options: community EOSG (github.com/3ddelano/epic-online-services-godot), "Godot EOS"
-  asset-library plugin. Dedicated-server session maturity [Unverified]. Nakama worth a look as
+  asset-library plugin. EOSG dedicated-server sessions verified in the spike (2026-10-01). Nakama worth a look as
   an alternative backend (auth/matchmaking/storage/leaderboards).
 - Decision via **3-5 day spike** (step 2). Pass criteria:
   - Headless dedicated server + 2 clients, pure-data board, enemy path, towers, recycling
@@ -74,6 +75,24 @@ UE doc drift (for step 3, doc cleanup - UE repo `Documentation/GAME_PROJECTS/Tow
   - iOS export running on device; note binary size
   - If EOS sessions or headless server fight back -> stay on UE with confidence.
 - The Houdini sprite pipeline is engine-agnostic; proceed regardless.
+
+## Step 2 Status (2026-10-01) - Godot spike done (Windows-testable criteria PASS)
+
+Full results: `Docs/Godot_Spike.md`. Project: `Godot/TowerClashSpike/`.
+- PASS: headless authoritative server + 2 bot clients over ENet, pure-data sim, path, towers,
+  merges, recycling, mirrored boards. Real-time full match with client/server state agreement;
+  also passes from exported release builds.
+- PASS: EOS via EOSG 2.3.1. Device-ID Connect login, dedicated-server session advertised and
+  found by client search (`host_address` read back).
+- Numbers: snapshots ~150 B (binary codec) at 10 Hz, ~2 KB/s per client including headers
+  [estimate]. Server ~91 MB RAM, ~3 % of a core. Linux server export 99 MB incl. EOS. Houdini
+  sprite JSON imports with 0 px calibration error.
+- NOT DONE: iOS export (needs Mac), Android export (no JDK/SDK here). Estimated Android arm64
+  download ~40 MB [estimate].
+- Recommendation: Godot is viable, but do not switch until iOS export + EOS login runs on an
+  iPhone (EOSG is a single-maintainer plugin). Then Android, then a real-network test.
+- Security: the UE repo commits the EOS client and DedicatedServer secrets in `Config/*.ini`.
+  Consider rotating them and moving them out of version control.
 
 ## Step 1 Status (2026-09-29) - generator working end-to-end
 
@@ -115,6 +134,7 @@ Goal: hython-driven, data-driven generator that renders an asset to directional 
 - Engine importers (UE DataTable/MI or Godot resources) consume the JSON later.
 
 ## Open Questions
+- **Engine decision (Godot vs UE):** pending the iOS device test from `Godot_Spike.md` (user's MacBook).
 - **Cell size + budget DECIDED 2026-09-30:** 256 px for towers, enemies, bosses (enemy/boss judged
   on MacBook Retina clarity test); texture budget raised 64 -> ~160 MB (~153 MB all content,
   <= ~145 MB per match); load per match (deck towers only). Still to do: confirm on a low-end

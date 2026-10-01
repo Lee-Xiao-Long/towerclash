@@ -1,0 +1,119 @@
+{
+  "schema": "towerclash.sprite_sheet/1",
+  "asset": "Test_Crag",
+  "cell": {
+    "w": 192,
+    "h": 192
+  },
+  "pivot_px": {
+    "x": 96,
+    "y": 140,
+    "origin": "cell top-left, y down"
+  },
+  "cm_per_pixel": 0.75,
+  "alpha": "straight",
+  "colorspace": "sRGB",
+  "camera": {
+    "projection": "ortho",
+    "tilt_from_vertical_deg": 40.0,
+    "distance_cm": 2000.0
+  },
+  "key_light": {
+    "azimuth_deg": 135.0,
+    "elevation_deg": 45.0,
+    "color": [
+      1.0,
+      0.93,
+      0.82
+    ]
+  },
+  "layout": "row = (animation, direction), column = frame index",
+  "flip_x": "directions with flip_x use the source direction's row mirrored horizontally; mirrored pivot x = cell.w - pivot_px.x",
+  "sheets": [
+    {
+      "file": "Test_Crag_Sheet.png",
+      "width": 2048,
+      "height": 2048,
+      "cols": 10,
+      "rows": 8
+    }
+  ],
+  "directions": [
+    {
+      "name": "S",
+      "yaw_deg": 0.0,
+      "source": "S",
+      "flip_x": false
+    },
+    {
+      "name": "SE",
+      "yaw_deg": 45.0,
+      "source": "SE",
+      "flip_x": false
+    },
+    {
+      "name": "E",
+      "yaw_deg": 90.0,
+      "source": "E",
+      "flip_x": false
+    },
+    {
+      "name": "NE",
+      "yaw_deg": 135.0,
+      "source": "NE",
+      "flip_x": false
+    },
+    {
+      "name": "N",
+      "yaw_deg": 180.0,
+      "source": "N",
+      "flip_x": false
+    },
+    {
+      "name": "NW",
+      "yaw_deg": 225.0,
+      "source": "NW",
+      "flip_x": false
+    },
+    {
+      "name": "W",
+      "yaw_deg": 270.0,
+      "source": "W",
+      "flip_x": false
+    },
+    {
+      "name": "SW",
+      "yaw_deg": 315.0,
+      "source": "SW",
+      "flip_x": false
+    }
+  ],
+  "animations": [
+    {
+      "name": "Walk",
+      "fps": 24,
+      "loop": false,
+      "frames": 10,
+      "sheet": 0,
+      "rows": {
+        "S": 0,
+        "SE": 1,
+        "E": 2,
+        "NE": 3,
+        "N": 4,
+        "NW": 5,
+        "W": 6,
+        "SW": 7
+      }
+    }
+  ],
+  "generated_utc": "2026-09-30T19:07:56Z",
+  "generator": "Houdini/scripts/sprite_gen.py",
+  "houdini_version": "22.0.368",
+  "content_rect": {
+    "x": 28,
+    "y": 38,
+    "w": 136,
+    "h": 145
+  }
+}

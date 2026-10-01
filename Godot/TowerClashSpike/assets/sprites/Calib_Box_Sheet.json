@@ -1,0 +1,70 @@
+{
+  "schema": "towerclash.sprite_sheet/1",
+  "asset": "Calib_Box",
+  "cell": {
+    "w": 256,
+    "h": 256
+  },
+  "pivot_px": {
+    "x": 128,
+    "y": 160,
+    "origin": "cell top-left, y down"
+  },
+  "cm_per_pixel": 0.75,
+  "alpha": "straight",
+  "colorspace": "sRGB",
+  "camera": {
+    "projection": "ortho",
+    "tilt_from_vertical_deg": 40.0,
+    "distance_cm": 2000.0
+  },
+  "key_light": {
+    "azimuth_deg": 135.0,
+    "elevation_deg": 45.0,
+    "color": [
+      1.0,
+      0.93,
+      0.82
+    ]
+  },
+  "layout": "row = (animation, direction), column = frame index",
+  "flip_x": "directions with flip_x use the source direction's row mirrored horizontally; mirrored pivot x = cell.w - pivot_px.x",
+  "sheets": [
+    {
+      "file": "Calib_Box_Sheet.png",
+      "width": 256,
+      "height": 256,
+      "cols": 1,
+      "rows": 1
+    }
+  ],
+  "directions": [
+    {
+      "name": "S",
+      "yaw_deg": 0.0,
+      "source": "S",
+      "flip_x": false
+    }
+  ],
+  "animations": [
+    {
+      "name": "Still",
+      "fps": 1,
+      "loop": false,
+      "frames": 1,
+      "sheet": 0,
+      "rows": {
+        "S": 0
+      }
+    }
+  ],
+  "generated_utc": "2026-10-01T03:58:43Z",
+  "generator": "Houdini/scripts/sprite_gen.py",
+  "houdini_version": "22.0.368",
+  "content_rect": {
+    "x": 60,
+    "y": 22,
+    "w": 136,
+    "h": 191
+  }
+}

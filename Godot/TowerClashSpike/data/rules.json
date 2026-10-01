@@ -1,0 +1,19 @@
+{
+  "_note": "Spike values from GDD 3.2/4.1/4.2. Not balanced.",
+  "start_gold": 100,
+  "base_hp": 3,
+  "tower_cost_base": 10,
+  "tower_cost_step": 10,
+  "kill_gold": 10,
+  "recycled_kill_gold": 15,
+  "wave_bonus": 25,
+  "perfect_wave_bonus": 50,
+  "merge_power_multiplier": 2.5,
+  "max_tower_level": 3,
+  "slot_cols": 5,
+  "slot_rows": 3,
+  "slot_pitch_cm": 130,
+  "recycle_spawn_interval_s": 1.0,
+  "deck_size": 5,
+  "default_deck": ["Basic", "Sniper", "Rapid", "Splash", "Slow"]
+}

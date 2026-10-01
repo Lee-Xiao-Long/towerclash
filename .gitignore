@@ -10,6 +10,11 @@ houdini_temp/
 *.translation
 export/
 Godot/**/build/
+Godot/logs/
+# EOSG binaries are fetched by Godot/TowerClashSpike/tools/get_eosg.ps1 (~35 MB per platform)
+Godot/TowerClashSpike/addons/epic-online-services-godot/
+# Local EOS credentials (generated from the UE Config by tools/make_eos_credentials.ps1)
+*.local.json
 
 # Python
 __pycache__/
