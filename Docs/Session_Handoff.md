@@ -35,9 +35,8 @@
 ## Findings From Analysis (act on these)
 
 Sprite/visual plan issues:
-1. **Directional sprites missing.** RESOLVED 2026-09-30: 8 directions (diagonal movement) for moving
-   units; generator renders them. Memory impact recorded in UE `Visual_Overhaul_Plan.md` budget.
-   Multiplies frames and atlas memory - budget for it.
+1. **Directional sprites missing.** RESOLVED 2026-09-30: 8 directions for towers, enemies and
+   bosses; generator renders them. Memory impact recorded in UE `Visual_Overhaul_Plan.md` budget.
 2. **Premultiplied alpha + Masked blend conflict.** Masked ignores partial alpha, so
    premultiplied edges go dark. For Masked: straight alpha + color dilation/edge bleed.
 3. **No pixel-density or pivot standard.** Every sprite needs a fixed world-cm-per-pixel
@@ -91,6 +90,8 @@ Done and verified - details in `Docs/Sprite_Pipeline.md`:
 - Hip source path verified (2026-09-30) with `Test_Crag` (built-in Crag: packed prims, textured VOP
   materials inside an HDA): 8 dirs x 10 frames at 192 px in ~137 s. Needed fixes for material
   binding and HDA texture paths (details in `Sprite_Pipeline.md`); generated nodes now `__sprite_*`.
+- Plan after step 1: finish sprite gen -> Godot spike -> overall doc update -> back to UE
+  (sprite plane rotation `FRotator(-50,0,0)` vs code `FRotator(0,90,15)` checked then).
 - Policy: older spec docs (UE repo Documentation) are updated as decisions are made.
   Done for tilt/light in `Houdini_Quickstart.md`, `Visual_Overhaul_Plan.md`, `CURRENT_STATUS.md`.
   Sprite plane rotation in docs is now `FRotator(-50,0,0)`; code still uses `FRotator(0,90,15)`
@@ -114,10 +115,12 @@ Goal: hython-driven, data-driven generator that renders an asset to directional 
 - Engine importers (UE DataTable/MI or Godot resources) consume the JSON later.
 
 ## Open Questions
-- **Enemy/boss cell size vs memory budget (flagged in UE `Visual_Overhaul_Plan.md`).** With 8 dirs:
-  enemies at 256 px ~7 MB each (total ~75 MB > 64 MB budget); at 128 px ~1.75 MB (total ~44 MB) but
-  only 1.6x clarity margin. Bosses at the plan's 512 px can't fit a 2048 sheet (Walk row 4096 px).
-  Options: 128/256 cells, fewer frames, bigger budget/4096 sheets. Decide after an on-device test.
-- Do towers need directional frames (turrets aiming)?
+- **Cell size vs memory budget (flagged in UE `Visual_Overhaul_Plan.md`).** Towers, enemies and
+  bosses are all 8-directional. Only "everything 128 px, bosses 256 px" fits 64 MB (~56 MB);
+  256 px hero towers -> ~74 MB, 256 px enemies -> ~87 MB. 512 px cells can't fit a 2048 sheet.
+  128 px is only 1.6x clarity margin for an ~80 px enemy. Test page built (2026-09-30):
+  `Houdini/render/ClarityTest/Sprite_Clarity_Test.html` - user judges on MacBook Retina.
+  Rebuild: render `Test_Crag --cell 128|256|512 --dirs S,SE,E` (+ `--max-sheet 8192 --skip-render`
+  for 256/512), then `python Houdini/scripts/make_clarity_test.py`.
 - Commerce backend choice.
 - Arena world orientation (determines the level sun yaw that matches the 135 deg sprite light).

@@ -330,17 +330,31 @@ def main():
     ap.add_argument("--skip-render", action="store_true", help="re-pack existing EXRs only")
     ap.add_argument("--no-save-hip", action="store_true")
     ap.add_argument("--tilt", type=float, help="override camera tilt (experiments); output gets a _TiltNN suffix")
+    ap.add_argument("--cell", type=int, help="re-render at this cell width with identical framing (cell, pivot and "
+                                             "cm_per_pixel scaled together); output gets a _CNN suffix")
+    ap.add_argument("--max-sheet", type=int, help="override max_sheet_px (tests only; shipping cap is Canonical.json)")
     args = ap.parse_args()
 
-    log = Log(HOUDINI_DIR / "logs" / f"sprite_{args.asset}{'' if args.tilt is None else f'_Tilt{args.tilt:g}'}.log")
+    suffix = ("" if args.tilt is None else f"_Tilt{args.tilt:g}") + ("" if args.cell is None else f"_C{args.cell}")
+    log = Log(HOUDINI_DIR / "logs" / f"sprite_{args.asset}{suffix}.log")
     t_start = time.time()
     try:
         canon = json.loads((HOUDINI_DIR / "config" / "Canonical.json").read_text(encoding="utf-8"))
         asset_cfg = json.loads((HOUDINI_DIR / "config" / "assets" / f"{args.asset}.json").read_text(encoding="utf-8"))
         name = asset_cfg["name"]
+        if "cm_per_pixel" in asset_cfg:
+            canon["sprite"]["cm_per_pixel"] = float(asset_cfg["cm_per_pixel"])
+        if args.max_sheet is not None:
+            canon["sprite"]["max_sheet_px"] = args.max_sheet
         if args.tilt is not None:
             canon["camera"]["tilt_from_vertical_deg"] = args.tilt
             name = f"{name}_Tilt{args.tilt:g}"
+        if args.cell is not None:
+            k = args.cell / asset_cfg["cell_px"][0]
+            asset_cfg["cell_px"] = [round(c * k) for c in asset_cfg["cell_px"]]
+            asset_cfg["pivot_px"] = [round(p * k) for p in asset_cfg["pivot_px"]]
+            canon["sprite"]["cm_per_pixel"] /= k
+            name = f"{name}_C{args.cell}"
         log.log(f"houdini {hou.applicationVersionString()} asset {name}")
 
         dir_meta, render_dirs, yaw_of = resolve_directions(canon, asset_cfg)

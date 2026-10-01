@@ -13,7 +13,14 @@ $h = "C:\Program Files\Side Effects Software\Houdini 22.0.368\bin\hython.exe"
 & $h Houdini\scripts\sprite_gen.py --asset StandIn_Blocky --tilt 45 --anims Walk   # tilt experiment (_Tilt45 output)
 & $h Houdini\scripts\sprite_gen.py --asset Calib_Box; & $h Houdini\scripts\check_calibration.py
 & $h Houdini\scripts\make_test_crag_hip.py; & $h Houdini\scripts\sprite_gen.py --asset Test_Crag   # hip-source test
+& $h Houdini\scripts\sprite_gen.py --asset Test_Crag --cell 256 --dirs S,SE,E --max-sheet 8192   # same framing, 2x density (_C256)
+python Houdini\scripts\make_clarity_test.py   # needs Test_Crag_C128/C256/C512; writes render/ClarityTest/Sprite_Clarity_Test.html
 ```
+
+`--cell N` scales cell, pivot and cm-per-pixel together so only pixel density changes. `--max-sheet`
+lifts the 2048 cap for tests only. Asset configs may set `cm_per_pixel` to override the canonical value.
+The clarity page is one self-contained file (sheets embedded); copy it to the test device and open
+it in a browser. It draws at true device pixels through a GPU-style mip chain.
 
 Terminal gets a 3-4 line summary; everything else (incl. husk) goes to `Houdini/logs/sprite_<Asset>.log`.
 Outputs (git-ignored): `Houdini/render/<Asset>/<Asset>_Sheet.png|json`, raw EXRs in `frames/`.
@@ -57,7 +64,7 @@ exercises the hip path.
   `pivot_px`; ortho width = `cell_w * cm_per_pixel`. Verified by `check_calibration.py` (0.4 px error).
 - H22 camera LOP scales the aperture parm by 0.01 before writing USD; the generator measures the
   factor and asserts the USD value.
-- Directions: 8 (decided 2026-09-30, for diagonal movement). The asset is rotated (camera and sun
+- Directions: 8 (decided 2026-09-30) for towers, enemies and bosses. The asset is rotated (camera and sun
   stay fixed), so lighting stays world-consistent.
   `mirror_west: true` renders only S..N and marks W-side directions `flip_x` (halves memory, but the
   mirrored sprites are lit from the wrong side - off by default).
@@ -93,7 +100,7 @@ baked lighting in-engine must be matched by eye later [Unverified against UE/God
   cycles or non-pow2 sheets if the target compression allows.
 - No blob shadow / ground contact rendered (engine decal per plan).
 - **Cell size vs memory (open):** 8 directions per animation means per-animation sheets are
-  (frames x cell) wide by 8 x cell tall. 3-anim enemy: 128 px = 1.75 MB (ASTC 4x4), 256 px = 7 MB;
-  4-anim boss: 256 px = 9 MB; 512 px cells exceed the 2048 cap. Budget analysis in UE
-  `Visual_Overhaul_Plan.md` (Texture Memory Budget).
+  (frames x cell) wide by 8 x cell tall. Per unit (ASTC 4x4): tower 128 px = 2 MB / 256 px = 8 MB;
+  enemy 1.75 / 7 MB; boss 256 px = 9 MB; 512 px cells exceed the 2048 cap. Whole-game totals and the
+  clarity test are in UE `Visual_Overhaul_Plan.md` (Texture Memory Budget).
 - Engine importers (UE DataTable/MI, Godot SpriteFrames) not written yet.
