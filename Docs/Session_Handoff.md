@@ -115,12 +115,10 @@ Goal: hython-driven, data-driven generator that renders an asset to directional 
 - Engine importers (UE DataTable/MI or Godot resources) consume the JSON later.
 
 ## Open Questions
-- **Cell size vs memory budget (flagged in UE `Visual_Overhaul_Plan.md`).** Towers, enemies and
-  bosses are all 8-directional. Only "everything 128 px, bosses 256 px" fits 64 MB (~56 MB);
-  256 px hero towers -> ~74 MB, 256 px enemies -> ~87 MB. 512 px cells can't fit a 2048 sheet.
-  128 px is only 1.6x clarity margin for an ~80 px enemy. Test page built (2026-09-30):
-  `Houdini/render/ClarityTest/Sprite_Clarity_Test.html` - user judges on MacBook Retina.
-  Rebuild: render `Test_Crag --cell 128|256|512 --dirs S,SE,E` (+ `--max-sheet 8192 --skip-render`
-  for 256/512), then `python Houdini/scripts/make_clarity_test.py`.
+- **Cell size + budget DECIDED 2026-09-30:** 256 px for towers, enemies, bosses (enemy/boss judged
+  on MacBook Retina clarity test); texture budget raised 64 -> ~160 MB (~153 MB all content,
+  <= ~145 MB per match); load per match (deck towers only). Still to do: confirm on a low-end
+  device (iPhone SE 3 / 2 GB Android). Clarity page rebuild: render `Test_Crag --cell 128|256|512
+  --dirs S,SE,E` (+ `--max-sheet 8192 --skip-render` for 256/512), then `python Houdini/scripts/make_clarity_test.py`.
 - Commerce backend choice.
 - Arena world orientation (determines the level sun yaw that matches the 135 deg sprite light).

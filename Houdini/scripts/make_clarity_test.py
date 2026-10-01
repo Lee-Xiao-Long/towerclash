@@ -60,9 +60,8 @@ PAGE = r"""<!doctype html>
 <h2>Boss</h2><div class="row" id="boss"></div>
 <p><small>Memory figures: 8 directions, ASTC 4x4 (~1 byte/px), power-of-2 sheets, no mips. Enemy = Walk 8 + Hit 2 + Death 4 frames;
 boss = + Intro 4. Directions shown: S, SE, E. Not shown: ASTC compression artifacts, engine filtering differences, real art (Crag is a stand-in).</small></p>
-<p><small>Whole-game sprite totals (8 towers + 3 hero towers + 6 enemies + 2 bosses, all 8-directional, + 5.1 MB other) vs the 64 MB budget:
-everything 128 px, bosses 256 px = <span class="ok">55.6 MB</span>; hero towers 256 = <span class="bad">73.6 MB</span>;
-enemies 256 = <span class="bad">87.1 MB</span>; all towers 256 = <span class="bad">121.6 MB</span>.</small></p>
+<p><small>Whole-game sprite totals (8 towers + 3 hero towers + 6 enemies + 2 bosses, all 8-directional, + 5.1 MB other),
+enemies/bosses at 256 px (decided): towers 128 px = 87 MB; towers 256 px = 134-153 MB. Original plan budget was 64 MB.</small></p>
 <script>
 const D=__DATA__, dpr=window.devicePixelRatio||1;
 const TESTS={enemy:{sizes:[128,256,512],frac:0.062,phone:80,cost:{128:'1.75 MB',256:'7 MB',512:'28 MB'},

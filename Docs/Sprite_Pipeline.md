@@ -101,6 +101,7 @@ baked lighting in-engine must be matched by eye later [Unverified against UE/God
 - No blob shadow / ground contact rendered (engine decal per plan).
 - **Cell size vs memory (open):** 8 directions per animation means per-animation sheets are
   (frames x cell) wide by 8 x cell tall. Per unit (ASTC 4x4): tower 128 px = 2 MB / 256 px = 8 MB;
-  enemy 1.75 / 7 MB; boss 256 px = 9 MB; 512 px cells exceed the 2048 cap. Whole-game totals and the
-  clarity test are in UE `Visual_Overhaul_Plan.md` (Texture Memory Budget).
+  enemy 1.75 / 7 MB; boss 256 px = 9 MB; 512 px cells exceed the 2048 cap. Decided 2026-09-30:
+  256 px for towers, enemies and bosses; texture budget ~160 MB, loaded per match. Details in UE
+  `Visual_Overhaul_Plan.md` (Texture Memory Budget).
 - Engine importers (UE DataTable/MI, Godot SpriteFrames) not written yet.
