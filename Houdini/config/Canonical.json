@@ -4,7 +4,7 @@
     "units": "1 scene unit = 1 cm. +Y up.",
     "ground": "Ground plane is Y=0. North = screen-up (-Z, away from camera), East = screen-right (+X), South = toward camera (+Z).",
     "asset_front": "Assets face +Z (South, toward the camera) at yaw 0, feet on Y=0, pivot at the origin.",
-    "direction_yaw": "Direction yaw rotates the asset about +Y; 0=S, 90=E, 180=N, 270=W (right-handed, +Z toward +X).",
+    "direction_yaw": "Direction yaw rotates the asset about +Y; 0=S, 90=E, 180=N, 270=W (right-handed, +Z toward +X). 8 directions decided 2026-09-30 (diagonal movement).",
     "light_azimuth": "Compass azimuth the light comes FROM, clockwise from North (screen-up). 135 = from South-East (lower-right, camera side). Decided 2026-09-30; the in-engine sun must be matched to this once the arena exists.",
     "camera_tilt": "Degrees from straight-down. 0 = top-down, 90 = side-on."
   },

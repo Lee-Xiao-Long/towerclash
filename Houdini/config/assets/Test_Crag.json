@@ -1,0 +1,14 @@
+{
+  "name": "Test_Crag",
+  "description": "Hip-source test: built-in Crag (packed pieces, VOP materials, $FF animation). Built by Houdini/scripts/make_test_crag_hip.py. Not game art.",
+  "source": {
+    "type": "hip",
+    "hip": "Houdini/hip/Test_Crag.hiplc",
+    "sop": "/obj/crag_asset/OUT"
+  },
+  "cell_px": [192, 192],
+  "pivot_px": [96, 140],
+  "animations": [
+    {"name": "Walk", "frames": 10, "fps": 24, "loop": false, "frame_start": 1}
+  ]
+}

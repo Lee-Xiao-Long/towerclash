@@ -30,6 +30,8 @@ import sprite_pack  # noqa: E402
 
 CAM_PRIM = "/cameras/spritecam"
 SETTINGS_PRIM = "/Render/spritesettings"
+PREFIX = "__sprite_"
+MAT_ROOT = "/materials/sprite"
 
 
 class Log:
@@ -108,6 +110,43 @@ def set_parm(node, name, value):
     p.set(value)
 
 
+def _material_remap(geo, log):
+    """Returns ({shop_materialpath: USD material path}, [(network path, [material names])]) for the
+    materials the asset uses (primitive shop_materialpath only)."""
+    attr = geo.findPrimAttrib("shop_materialpath")
+    if attr is None:
+        for cls, find in (("point", geo.findPointAttrib), ("detail", geo.findGlobalAttrib)):
+            if find("shop_materialpath") is not None:
+                log.log(f"WARNING: shop_materialpath is a {cls} attribute; only primitive materials are bound")
+        return {}, []
+    remap, nets, names = {}, [], {}
+    for path in sorted(set(v for v in attr.strings() if v)):
+        node = hou.node(path)
+        if node is None:
+            log.log(f"WARNING: material {path} not found; left unbound")
+            continue
+        net = node.parent().path()
+        if net not in nets:
+            nets.append(net)
+        names.setdefault(net, []).append(node.name())
+        remap[path] = f"{MAT_ROOT}/m{nets.index(net)}/{node.name()}"
+    return remap, [(net, names[net]) for net in nets]
+
+
+def _freeze_relative_paths(src, copy, log):
+    """Copied material nodes lose their location, so string parms that resolve relative to it (e.g. an
+    HDA texture 'opdef:`optypeinfo("../..", "o")`?Tex.jpg') are set to the source's evaluated value."""
+    for s_node, c_node in zip([src, *src.allSubChildren()], [copy, *copy.allSubChildren()]):
+        for parm in s_node.parms():
+            if parm.parmTemplate().type() != hou.parmTemplateType.String:
+                continue
+            raw = parm.unexpandedString()
+            if "opdef:" in raw or "../" in raw:
+                value = parm.eval()
+                c_node.parm(parm.name()).set(value)
+                log.log(f"material parm {s_node.path()}/{parm.name()}: {raw!r} -> {value!r}")
+
+
 def build_scene(canon, asset_cfg, log):
     src = asset_cfg["source"]
     if src["type"] == "procedural":
@@ -124,8 +163,15 @@ def build_scene(canon, asset_cfg, log):
         raise RuntimeError(f"unknown source type {src['type']}")
     log.log(f"asset SOP: {sop.path()}  anim parms on: {anim_node.path()}")
 
+    # Everything the generator creates is named __sprite_*; drop leftovers so a loaded hip that was
+    # itself produced by the generator (or has nodes with our names) cannot collide.
+    for parent in (hou.node("/obj"), hou.node("/stage")):
+        for child in parent.children():
+            if child.name().startswith(PREFIX):
+                child.destroy()
+
     # Wrapper object: pulls the asset in and applies the per-direction yaw.
-    wrap = hou.node("/obj").createNode("geo", "__sprite_src")
+    wrap = hou.node("/obj").createNode("geo", PREFIX + "src")
     for c in wrap.children():
         c.destroy()
     om = wrap.createNode("object_merge", "asset")
@@ -133,8 +179,19 @@ def build_scene(canon, asset_cfg, log):
     om.parm("xformtype").set(0)
     yaw = wrap.createNode("xform", "yaw")
     yaw.setInput(0, om)
+    mat_remap, mat_groups = _material_remap(yaw.geometry(), log)
+    last = yaw
+    if mat_remap:
+        # sopimport binds from usdmaterialpath (not shop_materialpath): map each Houdini material to
+        # the USD material the libraries below create. Works on packed prims too.
+        remap = wrap.createNode("attribwrangle", "remap_materials")
+        remap.setInput(0, yaw)
+        remap.parm("class").set("primitive")
+        remap.parm("snippet").set("".join(
+            f'if (s@shop_materialpath == "{src}") s@usdmaterialpath = "{dst}";\n' for src, dst in mat_remap.items()))
+        last = remap
     out = wrap.createNode("null", "OUT")
-    out.setInput(0, yaw)
+    out.setInput(0, last)
     out.setDisplayFlag(True)
     out.setRenderFlag(True)
     wrap.setDisplayFlag(False)
@@ -142,12 +199,39 @@ def build_scene(canon, asset_cfg, log):
     cell, pivot = asset_cfg["cell_px"], asset_cfg["pivot_px"]
     cmpp = canon["sprite"]["cm_per_pixel"]
     stage = hou.node("/stage")
-    si = stage.createNode("sopimport", "asset")
+    libs = []
+    for i, (net, names) in enumerate(mat_groups):
+        lib = stage.createNode("materiallibrary", f"{PREFIX}materials{i}")
+        if libs:
+            lib.setInput(0, libs[-1])
+        # Pointing "matnet" at an external network yields no materials in H22 (checked from hython),
+        # so copy the used material nodes in. This also works for networks inside locked HDAs.
+        lib.parm("matpathprefix").set(f"{MAT_ROOT}/m{i}/")
+        sources = [hou.node(f"{net}/{n}") for n in names]
+        for src_node, copy in zip(sources, hou.copyNodesTo(sources, lib)):
+            _freeze_relative_paths(src_node, copy, log)
+        libs.append(lib)
+    si = stage.createNode("sopimport", PREFIX + "asset")
+    if libs:
+        si.setInput(0, libs[-1])
     si.parm("soppath").set(out.path())
     si.parm("primpath").set("/asset")
     si.parm("pathprefix").set("/asset")
+    # sopimport's "create" modes do not translate SOP-level VOP materials (checked in H22), so the
+    # materials come from the libraries above; "bindblock" binds and drops the helper primvar.
+    si.parm("bindmaterials").set("bindblock" if mat_remap else "nobind")
+    if mat_remap:
+        st = si.stage()
+        missing = [d for d in mat_remap.values() if not st.GetPrimAtPath(d).IsValid()]
+        if missing:
+            raise RuntimeError(f"material library did not create {missing}")
+        bound = sum(1 for prim in st.Traverse() if prim.GetRelationship("material:binding")
+                    and prim.GetRelationship("material:binding").GetTargets())
+        if not bound:
+            raise RuntimeError("materials exist but nothing was bound (see sopimport bindmaterials)")
+        log.log(f"materials: {mat_remap}; bound prims: {bound}")
 
-    cam = stage.createNode("camera", "spritecam")
+    cam = stage.createNode("camera", PREFIX + "cam")
     cam.setInput(0, si)
     cam.parm("primpath").set(CAM_PRIM)
     cam.parm("projection").set("orthographic")
@@ -170,7 +254,7 @@ def build_scene(canon, asset_cfg, log):
         raise RuntimeError(f"camera aperture mismatch: want {want_h}x{want_v}, got {got_h}x{got_v}")
 
     kl = canon["key_light"]
-    key = stage.createNode("distantlight::2.0", "key")
+    key = stage.createNode("distantlight::2.0", PREFIX + "key")
     key.setInput(0, cam)
     key.parm("primpath").set("/lights/key")
     key.parm("rOrd").set("xyz")
@@ -182,7 +266,7 @@ def build_scene(canon, asset_cfg, log):
         set_parm(key, f"xn__inputscolor_zta{c}", kl["color"][i])
 
     fl = canon["fill_light"]
-    fill = stage.createNode("domelight::3.0", "fill")
+    fill = stage.createNode("domelight::3.0", PREFIX + "fill")
     fill.setInput(0, key)
     fill.parm("primpath").set("/lights/fill")
     set_parm(fill, "xn__inputsintensity_i0a", fl["intensity"])
@@ -190,7 +274,7 @@ def build_scene(canon, asset_cfg, log):
         set_parm(fill, f"xn__inputscolor_zta{c}", fl["color"][i])
 
     rc = canon["render"]
-    krs = stage.createNode("karmarendersettings", "settings")
+    krs = stage.createNode("karmarendersettings", PREFIX + "settings")
     krs.setInput(0, fill)
     krs.parm("primpath").set(SETTINGS_PRIM)
     krs.parm("camera").set(CAM_PRIM)
@@ -204,13 +288,13 @@ def build_scene(canon, asset_cfg, log):
     krs.parm("pixelfilter").set("gauss")
     krs.parm("pixelfiltersize").set(rc["pixel_filter_width"])
 
-    rop = stage.createNode("usdrender_rop", "render")
+    rop = stage.createNode("usdrender_rop", PREFIX + "render")
     rop.setInput(0, krs)
     rop.parm("renderer").set("BRAY_HdKarma")
     rop.parm("rendersettings").set(SETTINGS_PRIM)
     rop.parm("trange").set("normal")
     rop.parm("allframesatonce").set(1)
-    stage.layoutChildren()
+    stage.layoutChildren(items=(*libs, si, cam, key, fill, krs, rop))
     return {"anim_node": anim_node, "yaw": yaw, "krs": krs, "rop": rop, "stage": stage}
 
 
