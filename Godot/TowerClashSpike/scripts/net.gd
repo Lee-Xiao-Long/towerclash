@@ -1,23 +1,34 @@
 extends Node
 ## Autoload. ENet transport, RPC surface and the authoritative server loop.
-## Server: owns a MatchSim, sends full-state snapshots. Clients: send intents only.
+## Server: owns a MatchSim, sends full-state snapshots, then resets for the next match
+## (unless --quit-on-end). Clients: send intents only; can connect/leave repeatedly.
 
+signal connected_to_host
 signal joined(player_index: int)
+signal match_info_received(names: Array)
 signal snapshot_received(snap: Dictionary)
 signal match_ended_received(res: Dictionary)
 signal action_feedback(res: Dictionary)
+## Connection failed, server went away, or the server rejected us (see reject_reason).
 signal disconnected
 
 const DEFAULT_PORT := 7777
+## ENet slots. More than 2 so a third client gets an explicit "full" instead of a timeout.
+const MAX_PEERS := 6
+const NO_HELLO_KICK_S := 15.0
+const POST_MATCH_KICK_S := 20.0
 
 var args: Dictionary = {}
 var is_server := false
 var sim: MatchSim
 var my_index := -1
+var names: Array = ["", ""]
+var reject_reason := ""
 
+# server
 var _peer_to_index: Dictionary = {}
+var _peer_seen_at: Dictionary = {}
 var _decks: Array = [null, null]
-var _names: Array = ["", ""]
 var _snap_interval := 0.1
 var _snap_acc := 0.0
 var _sim_acc := 0.0
@@ -25,13 +36,25 @@ var _sim_dt := 1.0 / 30.0
 var _timescale := 1.0
 var _ended_at := -1.0
 var _wall := 0.0
-var _net_stats := {"snapshots": 0, "snapshot_bytes": 0, "max_snapshot_bytes": 0,
-	"naive_samples": 0, "naive_bytes": 0, "naive_max": 0, "codec_checks": 0, "codec_failures": 0}
+var _matches := 0
+var _use_eos := false
+var _quitting := false
+var _net_stats := {}
+
+# client
+var _hello: Dictionary = {}
+var _leaving := false
 
 
 func _ready() -> void:
 	args = parse_args()
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_net_stats = _fresh_stats()
+	# Connected once; SceneMultiplayer keeps them across peer changes, so repeated
+	# start_client() calls never stack duplicate handlers.
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 
 static func parse_args() -> Dictionary:
@@ -51,8 +74,15 @@ func log_line(msg: String) -> void:
 	print("[%8.2f] %s %s" % [_wall, role, msg])
 
 
+func _fresh_stats() -> Dictionary:
+	return {"snapshots": 0, "snapshot_bytes": 0, "max_snapshot_bytes": 0,
+		"naive_samples": 0, "naive_bytes": 0, "naive_max": 0, "codec_checks": 0, "codec_failures": 0}
+
+
 # ---------------------------------------------------------------- server
 
+## --eos advertises the server through EOS sessions; --public-address sets the address
+## clients are told to connect to (default 127.0.0.1). --max-matches=N quits after N matches.
 func start_server(port: int) -> void:
 	is_server = true
 	GameData.ensure_loaded()
@@ -66,7 +96,7 @@ func start_server(port: int) -> void:
 	Engine.max_fps = int(args.get("maxfps", str(fps_cap)))
 	_snap_interval = 1.0 / float(args.get("snaprate", "10"))
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, 2)
+	var err := peer.create_server(port, MAX_PEERS)
 	if err != OK:
 		log_line("ERROR create_server %d -> %s" % [port, error_string(err)])
 		get_tree().quit(2)
@@ -75,26 +105,44 @@ func start_server(port: int) -> void:
 	# No client<->client relay: clients only talk to the authority. Also stops the server from
 	# notifying an already-disconnected peer when both clients drop in the same frame.
 	(multiplayer as SceneMultiplayer).server_relay = false
-	multiplayer.peer_connected.connect(func(id): log_line("peer connected %d" % id))
+	multiplayer.peer_connected.connect(_on_server_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_server_peer_disconnected)
 	log_line("listening on %d (tick %d Hz, snapshots %d Hz, timescale %s)" % [
 		port, Engine.physics_ticks_per_second, int(round(1.0 / _snap_interval)), _timescale])
+	if args.has("eos"):
+		var addr := "%s:%d" % [args.get("public-address", "127.0.0.1"), port]
+		_use_eos = await Online.server_advertise(addr)
+		if not _use_eos:
+			log_line("ERROR EOS advertise failed (%s); direct connections still work" % Online.last_error)
+
+
+func _on_server_peer_connected(id: int) -> void:
+	_peer_seen_at[id] = _wall
+	log_line("peer connected %d" % id)
 
 
 func _on_server_peer_disconnected(id: int) -> void:
 	log_line("peer disconnected %d" % id)
+	_peer_seen_at.erase(id)
 	if not _peer_to_index.has(id):
 		return
 	var idx: int = _peer_to_index[id]
 	_peer_to_index.erase(id)
-	if sim != null and sim.phase != MatchSim.Phase.ENDED:
+	if sim == null:
+		# Left (or cancelled) before the match started: free the seat.
+		_decks[idx] = null
+		names[idx] = ""
+	elif sim.phase != MatchSim.Phase.ENDED:
 		sim._finish(1 - idx, "opponent_left")
 		_broadcast_end()
 
 
 func _physics_process(delta: float) -> void:
 	_wall += delta
-	if not is_server or sim == null:
+	if not is_server:
+		return
+	_kick_idle_peers()
+	if sim == null:
 		return
 	if sim.phase != MatchSim.Phase.ENDED:
 		# Fixed sim step regardless of timescale: Engine.time_scale would stretch the physics
@@ -103,9 +151,52 @@ func _physics_process(delta: float) -> void:
 		while _sim_acc >= _sim_dt - 1e-6 and sim.phase != MatchSim.Phase.ENDED:
 			_sim_acc -= _sim_dt
 			_sim_tick()
-	elif _ended_at >= 0.0 and args.has("quit-on-end") and _wall - _ended_at > 2.0:
-		log_line("quitting")
-		get_tree().quit(0)
+	elif _ended_at >= 0.0 and not _quitting:
+		var since := _wall - _ended_at
+		if args.has("quit-on-end"):
+			if since > 2.0:
+				_quit_server()
+		elif _peer_to_index.is_empty() or since > POST_MATCH_KICK_S:
+			_reset_for_next_match()
+
+
+## Peers that connect but never say hello would otherwise hold a seat-less ENet slot forever.
+func _kick_idle_peers() -> void:
+	for id in _peer_seen_at.keys():
+		if not _peer_to_index.has(id) and _wall - float(_peer_seen_at[id]) > NO_HELLO_KICK_S:
+			log_line("kicking silent peer %d" % id)
+			_peer_seen_at.erase(id)
+			multiplayer.multiplayer_peer.disconnect_peer(id)
+
+
+func _reset_for_next_match() -> void:
+	_matches += 1
+	for id in _connected_player_peers():
+		multiplayer.multiplayer_peer.disconnect_peer(id)
+	sim = null
+	_peer_to_index.clear()
+	_decks = [null, null]
+	names = ["", ""]
+	_ended_at = -1.0
+	_sim_acc = 0.0
+	_snap_acc = 0.0
+	_net_stats = _fresh_stats()
+	var max_matches := int(args.get("max-matches", "0"))
+	if max_matches > 0 and _matches >= max_matches:
+		log_line("played %d matches, shutting down" % _matches)
+		_quit_server()
+		return
+	log_line("ready for next match (%d played)" % _matches)
+	if _use_eos:
+		Online.server_set_state(Online.STATE_OPEN)
+
+
+func _quit_server() -> void:
+	_quitting = true
+	log_line("quitting")
+	if _use_eos:
+		await Online.server_destroy()
+	Online.quit(0)
 
 
 func _sim_tick() -> void:
@@ -177,6 +268,7 @@ func _broadcast_end() -> void:
 		return
 	_ended_at = _wall
 	var res := sim.result.duplicate(true)
+	res["names"] = names.duplicate()
 	var n: int = max(1, _net_stats.snapshots)
 	res["net"] = {
 		"snapshots": _net_stats.snapshots,
@@ -198,7 +290,11 @@ func hello(deck: Array, player_name: String) -> void:
 	if not is_server:
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if _peer_to_index.has(id) or sim != null:
+	if _peer_to_index.has(id):
+		return
+	if sim != null or (_decks[0] != null and _decks[1] != null):
+		log_line("rejecting %d: full" % id)
+		rejected.rpc_id(id, "full")
 		return
 	if not GameData.validate_deck(deck):
 		log_line("rejecting deck from %d: %s" % [id, str(deck)])
@@ -207,15 +303,19 @@ func hello(deck: Array, player_name: String) -> void:
 	var idx := 0 if _decks[0] == null else 1
 	_peer_to_index[id] = idx
 	_decks[idx] = deck
-	_names[idx] = player_name
-	log_line("peer %d '%s' is player %d deck %s" % [id, player_name, idx, str(deck)])
+	names[idx] = player_name.substr(0, 24)
+	log_line("peer %d '%s' is player %d deck %s" % [id, names[idx], idx, str(deck)])
 	welcome.rpc_id(id, idx)
 	if _decks[0] != null and _decks[1] != null:
 		sim = MatchSim.new()
 		var seed_value := int(args.get("seed", str(Time.get_ticks_usec())))
 		sim.setup(_decks, seed_value)
 		sim.start()
-		log_line("match started seed %d" % seed_value)
+		log_line("match started seed %d: '%s' vs '%s'" % [seed_value, names[0], names[1]])
+		for pid in _connected_player_peers():
+			match_info.rpc_id(pid, names)
+		if _use_eos:
+			Online.server_set_state(Online.STATE_IN_MATCH)
 
 
 @rpc("any_peer", "reliable")
@@ -248,24 +348,63 @@ func request_merge(src: int, dst: int) -> void:
 
 # ---------------------------------------------------------------- client
 
-func start_client(host: String, port: int, deck: Array, player_name: String) -> void:
+## Returns false if the ENet client could not be created. Success is signalled later by
+## connected_to_host / joined, failure by disconnected.
+func start_client(host: String, port: int, deck: Array, player_name: String) -> bool:
+	leave()
 	GameData.ensure_loaded()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(host, port)
 	if err != OK:
-		log_line("ERROR create_client -> %s" % error_string(err))
-		get_tree().quit(2)
-		return
+		log_line("ERROR create_client %s:%d -> %s" % [host, port, error_string(err)])
+		return false
+	reject_reason = ""
+	_hello = {"deck": deck, "name": player_name, "addr": "%s:%d" % [host, port]}
 	multiplayer.multiplayer_peer = peer
-	multiplayer.connected_to_server.connect(func():
-		log_line("connected to %s:%d" % [host, port])
-		hello.rpc_id(1, deck, player_name))
-	multiplayer.connection_failed.connect(func():
-		log_line("ERROR connection failed")
-		disconnected.emit())
-	multiplayer.server_disconnected.connect(func():
-		log_line("server disconnected")
-		disconnected.emit())
+	return true
+
+
+## Drops the connection without emitting disconnected. Safe to call when not connected.
+func leave() -> void:
+	if is_server:
+		return
+	_leaving = true
+	var p := multiplayer.multiplayer_peer
+	if p != null and not (p is OfflineMultiplayerPeer):
+		p.close()
+	multiplayer.multiplayer_peer = null
+	my_index = -1
+	names = ["", ""]
+	_hello = {}
+	_leaving = false
+
+
+func is_connected_to_host() -> bool:
+	var p := multiplayer.multiplayer_peer
+	return p != null and not (p is OfflineMultiplayerPeer) \
+			and p.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+
+
+func _on_connected_to_server() -> void:
+	if is_server or _hello.is_empty():
+		return
+	log_line("connected to %s" % _hello.addr)
+	connected_to_host.emit()
+	hello.rpc_id(1, _hello.deck, _hello.name)
+
+
+func _on_connection_failed() -> void:
+	if is_server or _leaving:
+		return
+	log_line("ERROR connection failed")
+	disconnected.emit()
+
+
+func _on_server_disconnected() -> void:
+	if is_server or _leaving:
+		return
+	log_line("server disconnected")
+	disconnected.emit()
 
 
 @rpc("authority", "reliable")
@@ -277,8 +416,15 @@ func welcome(index: int) -> void:
 
 @rpc("authority", "reliable")
 func rejected(reason: String) -> void:
-	log_line("ERROR rejected: " + reason)
+	reject_reason = reason
+	log_line(("ERROR rejected: " if reason != "full" else "rejected: ") + reason)
 	disconnected.emit()
+
+
+@rpc("authority", "reliable")
+func match_info(player_names: Array) -> void:
+	names = player_names
+	match_info_received.emit(player_names)
 
 
 @rpc("authority", "unreliable_ordered")

@@ -1,8 +1,10 @@
 extends Node
 ## Entry point. Role comes from user args after "--":
-##   --server [--port=7777] [--seed=N] [--timescale=4] [--quit-on-end]
-##   [--host=127.0.0.1] [--port=7777] [--name=X] [--bot] [--quit-on-end] [--shots=5,30 --shot-prefix=path]
-##   --calib [--out=dir]
+##   --server [--port=7777] [--seed=N] [--timescale=4] [--quit-on-end] [--eos [--public-address=IP]] [--max-matches=N]
+##   (no role args)  client app: splash -> home -> quick match -> arena -> home (see scripts/client/app/app.gd)
+##   --host=127.0.0.1 [--port=7777] [--name=X] [--bot] [--quit-on-end] [--shots=5,30 --shot-prefix=path]
+##                   direct test client: straight into the arena (tools/run_match.ps1)
+##   --calib [--out=dir] | --simtest | --eostest=server|client
 
 
 func _ready() -> void:
@@ -16,8 +18,11 @@ func _ready() -> void:
 		add_child(load("res://scripts/eos_test.gd").new())
 	elif a.has("server") or OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless" and not a.has("bot"):
 		Net.start_server(port)
-	else:
+	elif a.has("host"):
 		add_child(ArenaView.new())
 		GameData.ensure_loaded()
 		var deck: Array = String(a.get("deck", ",".join(GameData.rules.default_deck))).split(",")
-		Net.start_client(a.get("host", "127.0.0.1"), port, deck, a.get("name", "Player"))
+		if not Net.start_client(a.host, port, deck, a.get("name", "Player")):
+			get_tree().quit(2)
+	else:
+		add_child(App.new())

@@ -23,6 +23,7 @@ HLobbies="*res://addons/epic-online-services-godot/heos/hlobbies.gd"
 HP2P="*res://addons/epic-online-services-godot/heos/hp2p.gd"
 HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 Net="*res://scripts/net.gd"
+Online="*res://scripts/online.gd"
 
 [editor_plugins]
 

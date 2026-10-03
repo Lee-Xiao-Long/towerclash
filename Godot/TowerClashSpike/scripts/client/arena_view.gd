@@ -2,6 +2,11 @@ class_name ArenaView
 extends Node3D
 ## Client presentation. Turns server snapshots (player index, slot index, path distance)
 ## into cosmetics. Own board at the bottom, opponent's board rotated 180 deg at the top.
+## In the app flow (app_mode) it is created per match and emits finished() instead of quitting.
+
+signal match_started
+## res is the server result, or empty if the connection was lost before the match ended.
+signal finished(res: Dictionary)
 
 const BOARD_OFFSET_M := 4.0
 const INTERP_DELAY_S := 0.12
@@ -14,6 +19,8 @@ const BAR_PUSH_M := 3.1
 var camera: Camera3D
 var cam_basis: Basis
 var hud: Hud
+var app_mode := false
+var force_bot := false
 
 var _buf: Array = []
 var _latest: Dictionary = {}
@@ -34,11 +41,13 @@ var _bot_rng := RandomNumberGenerator.new()
 var _shots_at: Array = []
 var _shot_prefix := ""
 var _drag_src := -1
+var _started := false
+var _finished := false
 
 
 func _ready() -> void:
 	GameData.ensure_loaded()
-	_bot = Net.args.has("bot")
+	_bot = force_bot or Net.args.has("bot")
 	_bot_rng.seed = hash(Net.args.get("name", "bot")) + Time.get_ticks_usec()
 	_shot_prefix = Net.args.get("shot-prefix", "")
 	for s in String(Net.args.get("shots", "")).split(",", false):
@@ -46,14 +55,54 @@ func _ready() -> void:
 	_build_world()
 	hud = Hud.new()
 	add_child(hud)
-	hud.add_tower_pressed.connect(func(): Net.request_place.rpc_id(1))
+	hud.add_tower_pressed.connect(_on_add_tower)
+	hud.return_pressed.connect(_finish)
+	hud.set_names(Net.names, Net.my_index)
+	if Net.my_index >= 0:
+		_joined_at = 0.0
 	Net.joined.connect(_on_joined)
+	Net.match_info_received.connect(_on_match_info)
 	Net.snapshot_received.connect(_on_snapshot)
 	Net.match_ended_received.connect(_on_match_ended)
 	Net.action_feedback.connect(_on_action)
-	Net.disconnected.connect(func():
-		if _result.is_empty() and Net.args.has("quit-on-end"):
-			get_tree().quit(3))
+	Net.disconnected.connect(_on_disconnected)
+
+
+func _exit_tree() -> void:
+	for pair in [[Net.joined, _on_joined], [Net.match_info_received, _on_match_info],
+			[Net.snapshot_received, _on_snapshot], [Net.match_ended_received, _on_match_ended],
+			[Net.action_feedback, _on_action], [Net.disconnected, _on_disconnected]]:
+		if (pair[0] as Signal).is_connected(pair[1]):
+			(pair[0] as Signal).disconnect(pair[1])
+
+
+func _on_add_tower() -> void:
+	Net.request_place.rpc_id(1)
+
+
+func _on_match_info(player_names: Array) -> void:
+	hud.set_names(player_names, Net.my_index)
+
+
+func _on_disconnected() -> void:
+	if not _result.is_empty():
+		# Server closed the connection after the match (post-match timeout); just go home.
+		if app_mode:
+			_finish()
+		return
+	if Net.args.has("quit-on-end") and not app_mode:
+		get_tree().quit(3)
+		return
+	hud.show_message("Connection lost")
+	if app_mode:
+		get_tree().create_timer(2.0).timeout.connect(_finish)
+
+
+func _finish() -> void:
+	if _finished:
+		return
+	_finished = true
+	finished.emit(_result)
 
 
 # ---------------------------------------------------------------- world
@@ -155,6 +204,9 @@ func _on_joined(_idx: int) -> void:
 
 
 func _on_snapshot(snap: Dictionary) -> void:
+	if not _started:
+		_started = true
+		match_started.emit()
 	_counts.snapshots += 1
 	var by_id := {}
 	for row in snap.en:
@@ -455,7 +507,7 @@ func _on_match_ended(res: Dictionary) -> void:
 	if not _result.is_empty():
 		return
 	_result = res
-	hud.show_result(res, Net.my_index)
+	hud.show_result(res, Net.my_index, app_mode)
 	var mine: Array = _latest.p[Net.my_index] if not _latest.is_empty() else []
 	var report := {
 		"index": Net.my_index, "winner": res.winner, "reason": res.reason,
@@ -466,9 +518,12 @@ func _on_match_ended(res: Dictionary) -> void:
 	if _shot_prefix != "":
 		await get_tree().create_timer(0.5).timeout
 		await _save_shot(_shot_prefix + "_end.png")
-	if Net.args.has("quit-on-end"):
+	if Net.args.has("quit-on-end") and not app_mode:
 		await get_tree().create_timer(1.0).timeout
 		get_tree().quit(0)
+	elif app_mode and _bot:
+		# Bots linger on the result screen briefly so a watcher can read it.
+		get_tree().create_timer(4.0).timeout.connect(_finish)
 
 
 func _screenshot_tick() -> void:

@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-29 (carried over from a Copilot CLI session run inside the UE project repo)
 **Agreed work order:** 1) Houdini sprite generator -> 2) Godot spike (done 2026-10-01, see
-`Godot_Spike.md`) -> 3) overall doc update (UE repo doc drift below) -> back to UE / iOS device test
+`Godot_Spike.md`; playable app flow added 2026-10-02) -> 3) overall doc update (UE repo doc drift below) -> back to UE / iOS device test
 
 ---
 
@@ -93,6 +93,30 @@ Full results: `Docs/Godot_Spike.md`. Project: `Godot/TowerClashSpike/`.
   iPhone (EOSG is a single-maintainer plugin). Then Android, then a real-network test.
 - Security: the UE repo commits the EOS client and DedicatedServer secrets in `Config/*.ini`.
   Consider rotating them and moving them out of version control.
+
+## Step 2b Status (2026-10-02) - Godot spike playable app flow
+
+The spike now simulates the real product loop. Details: `Godot_Spike.md` "Playable App Flow".
+- Client flow: MadLee logo splash -> title + EOS sign-in -> home (Play/Deck/Profile/Settings,
+  swipe + tabs) -> Quick Match (EOS search, open servers only) -> match -> result -> home with
+  summary.
+- Persistent dedicated server: it resets between matches and flips the EOS session
+  `STATE` open/in_match.
+- Launcher: `Godot/TowerClashSpike/tools/play_local.ps1`.
+  - `-Bots 1` puts you against a bot; `-Local` skips EOS; `-Exported` uses the release builds;
+    `-Stop` closes everything.
+  - `-Loops N -Wait` runs an unattended check that prints a PASS line.
+- Verified: local mode, EOS mode and exported builds (2-match bot loops); `run_match` and
+  `run_eos` still pass.
+- Found and fixed: the process hung at exit after real EOS use (EOS SDK shutdown during
+  extension unload). The workaround is a hard exit after cleanup; it is a revisit item for
+  EOSG upstream.
+- Next on the spike, short of iOS:
+  - Android export on a device (install JDK 17 + Android SDK) with touch/swipe UX.
+  - Linux server on a VPS (`--public-address`) for a real-network test.
+  - Two distinct EOS users: Epic Account or per-device IDs.
+  - Deck editing.
+  - Real art in the arena.
 
 ## Step 1 Status (2026-09-29) - generator working end-to-end
 

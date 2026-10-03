@@ -1,6 +1,6 @@
 # Godot Spike - Results
 
-**Dates:** 2026-09-30 to 2026-10-01
+**Dates:** 2026-09-30 to 2026-10-02 (playable app flow added 2026-10-02)
 **Engine:** Godot 4.7.2-stable (official build), EOSG 2.3.1 (Epic Online Services Godot GDExtension)
 **Project:** `Godot/TowerClashSpike/`
 **Purpose:** Step 2 of the agreed work order. Decide whether Godot can replace UE 5.7 for TowerClash.
@@ -25,20 +25,23 @@ Recommendation is at the end.
 
 ---
 
-## What Was Built (~1,970 lines GDScript, no engine compile)
+## What Was Built (~3,500 lines GDScript, no engine compile)
 
 | File | Lines | Role |
 |---|---|---|
 | `scripts/match_sim.gd` | 384 | Authoritative rules as pure data (phases, waves, spawns, recycle queue, healer, boss minions, targeting, splash, slow, merges, win logic) |
-| `scripts/net.gd` | ~300 | ENet server/client autoload, RPCs, fixed-step server loop, snapshots, net stats |
+| `scripts/net.gd` | 442 | ENet server/client autoload, RPCs, fixed-step server loop, snapshots, net stats, persistent-server reset loop |
+| `scripts/online.gd` | 247 | `Online` autoload: EOS login, session search, server advertise + open/in_match state, safe exit |
 | `scripts/snap_codec.gd` | 99 | Binary snapshot codec (quantised) |
-| `scripts/client/arena_view.gd` | 488 | Mirrored boards, interpolation, sprites, tracers, input, bot |
+| `scripts/client/arena_view.gd` | 543 | Mirrored boards, interpolation, sprites, tracers, input, bot |
+| `scripts/client/hud.gd` | 114 | Match HUD + result panel (Return Home) |
+| `scripts/client/app/*.gd`, `ui/ui_kit.gd` | ~1,025 | Playable app flow: splash, home (4 pages), matchmaking, summary, local profile |
 | `scripts/client/dir_sprite.gd`, `sprite_sheet.gd` | 160 | Importer for the Houdini `towerclash.sprite_sheet/1` JSON + 8-direction Sprite3D |
 | `scripts/client/calib_view.gd` | 91 | Sprite-vs-mesh calibration test |
 | `scripts/sim_test.gd` | 66 | Offline batch sim (`--simtest`) |
 | `scripts/eos_test.gd` | ~190 | EOS probe (`--eostest=server|client`) |
 | `data/*.json` | - | Rules, towers, enemies, rounds (GDD values; early rounds spike-tuned) |
-| `tools/*.ps1` | - | `run_match`, `run_eos`, `get_eosg`, `make_eos_credentials` |
+| `tools/*.ps1` | - | `play_local`, `run_match`, `run_eos`, `get_eosg`, `make_eos_credentials` |
 
 Architecture follows the project rule: the server holds only data (player index, slot index,
 path distance, HP). Clients spawn every visual. The server never instantiates a node per entity.
@@ -47,6 +50,65 @@ path distance, HP). Clients spawn every visual. The server never instantiates a 
 
 *Same moment (1x, seed 2, 100 s) on both clients. Each sees its own board at the bottom and the
 opponent's board mirrored on top. Sprites are the Houdini Test_Crag sheet (8 directions, 256 px).*
+
+---
+
+## Playable App Flow (2026-10-02)
+
+The client now runs the real loop instead of a test harness:
+**logo splash -> title / EOS sign-in -> home -> Quick Match -> match -> result -> home with summary**,
+repeating. The dedicated server persists between matches, like UE `ResetServerForNextMatch`.
+
+![App flow](Images/Godot_Spike_App_Flow.png)
+
+*Splash (the UE MadLee logo), home, matchmaking, match, result panel, home summary. Captured from
+an EOS run with `play_local.ps1 -Shots`.*
+
+**Client (`App`, the default when no role arg is given)**
+- **Splash:** white background with the logo fade (0.6 s in / 1.4 s hold), then the "TOWER CLASH"
+  title card. EOS device-ID login runs behind the title card.
+- **Home:** 4 swipeable pages (Play / Deck / Profile / Settings) with a bottom tab bar.
+  - Play: Quick Match, plus Ranked / Practice placeholders.
+  - Deck: tower stats with sprite icons.
+  - Profile: W/L/D, kills, best round, last 10 matches.
+  - Settings: name, Online/Local matchmaking, local address, auto-play, reset stats.
+- **Profile:** the profile is local JSON in `user://profile[_<id>].json`.
+- **Matchmaking:**
+  - Online mode does an EOS search for bucket `TowerClash:QuickMatch` with `BUILD=spike-1` and
+    `STATE=open`, then ENet-connects to the `host_address` it finds.
+  - Local mode connects to `--local=host:port`.
+  - The search retries every 3 s for up to 120 s. Cancel works until the match starts.
+  - A "full" server is skipped and the next host is tried.
+- **Match:** the existing arena. The result panel has Return Home. On a disconnect mid-match the
+  client shows "Connection lost" and returns home.
+
+**Server**
+- Advertises one EOS session and flips its `STATE` attribute `open` <-> `in_match`.
+- Rejects a third player with "full" and kicks peers that never say hello (15 s).
+- After a result, it waits for both players to leave (max 20 s), then resets and re-opens the
+  session.
+- `--max-matches=N` makes the server shut down after N matches. It destroys the EOS session first.
+
+**Verified (Windows, localhost, 2 bot clients, 8x sim):**
+- 2-match loops pass in local mode, in EOS mode and from exported release builds.
+- EOS states logged in order: `in_match, open, in_match`.
+- Every process exits on its own.
+- The `.pck` files contain no secrets.
+- `run_match` and `run_eos` still pass.
+
+**Not verified:**
+- Touch and swipe on a real device.
+- Two different EOS users: all local clients share one device ID, hence one PUID.
+- Stale-session cleanup after a server crash [Unverified].
+
+**Known simplifications:**
+- No EOS `JoinSession` / `register_players`. Clients only search and then connect over ENet.
+- No reconnect after a drop.
+- The deck is fixed.
+
+**Balance quirk:** some seeds end in round 1 (e.g. seed 43146252 at 8x: base HP 3-0 after ~18 s
+of sim time). It reproduces in the legacy `run_match.ps1`, so it is the spike bot/rules, not the
+app flow.
 
 ---
 
@@ -142,9 +204,20 @@ Mobile, measured from the 4.7.2 templates (no export was possible):
    tick rate, scaled by timescale for accelerated tests so bot input latency is unchanged.
 7. **EOSG shutdown segfault.** The `EOSGRuntime` autoload ticks the SDK each frame, and calling
    `PlatformInterface.release()/shutdown()` manually crashes at exit. EOSG releases on unload
-   itself, so the fix is to stop the autoload's processing and just quit.
+   itself, so the probe stops the autoload's processing and just quits.
 8. **EOSG autoloads are required.** `eos.gd` references `EOSGRuntime` and `HAuth`, so the plugin's
    autoload set must be registered or nothing compiles.
+9. **EOS exit hang.** After a real session (login, search, ENet match), `get_tree().quit()` left
+   a windowless, idle process. This happened on both client and server, in every EOS run; the
+   short probe escaped it.
+   - A native attach (Rider LLDB) showed the main thread in `NtWaitForSingleObject(INFINITE)`.
+     The caller was in a DLL already unlinked from the module list; by size this is the EOS SDK.
+   - Inferred cause: the SDK shuts down during the extension unload and waits for its own
+     HTTP/websocket threads under the loader lock.
+   - Fix: `Online.quit()` stops the tick, logs, then calls `OS.kill(own pid)` once our own cleanup
+     (session destroy) is done.
+   - Revisit with EOSG upstream before shipping. Check whether mobile OSes, which rarely "quit",
+     are affected at all [Unverified].
 
 ## Spike Assumptions (not design decisions)
 - Hitscan shots; tower abilities not implemented.
@@ -199,6 +272,18 @@ cd Godot/TowerClashSpike
 ./tools/get_eosg.ps1                     # once per checkout (add -Platform linux for Linux server export)
 ./tools/make_eos_credentials.ps1         # once; writes git-ignored eos_credentials.local.json
 & $godot --headless --path . --import    # after adding addons or class_name scripts
+
+# Playable flow: 1 server + windowed clients (positioned side by side). Default = 2 bots, EOS.
+./tools/play_local.ps1 -Bots 1            # YOU play client 0 (left window) vs a bot
+./tools/play_local.ps1 -Bots 0            # two manual clients; press Quick Match in both
+./tools/play_local.ps1                    # watch two bots loop forever
+./tools/play_local.ps1 -Local             # skip EOS, connect straight to 127.0.0.1:7777
+./tools/play_local.ps1 -Exported          # same, using the exported builds in Godot/build/
+./tools/play_local.ps1 -Stop              # close everything the last launch started
+./tools/play_local.ps1 -Loops 2 -TimeScale 8 -Wait -ProfilePrefix test   # unattended check, PASS line
+./tools/play_local.ps1 -Loops 1 -TimeScale 2 -Wait -Shots                 # + screenshots of client 0
+# Or press Play (F5) in the Godot editor: with no args it starts the client app.
+# Then run a server separately: & $godot --headless --path . -- --server --eos
 
 ./tools/run_match.ps1 -TimeScale 8                         # headless server + 2 bots
 ./tools/run_match.ps1 -TimeScale 1 -Visual -Shots "15,100" # windowed clients + screenshots
