@@ -6,6 +6,24 @@
 
 ---
 
+## Current State / Next Action (updated 2026-10-03)
+
+- Steps 1 and 2 are done; all repos are committed and pushed.
+  - Step 1: Houdini sprite generator.
+  - Step 2: Godot spike, including the playable flow.
+- The engine decision is still pending the iOS device test on the user's MacBook
+  (`Godot_Spike.md` "Recommendation").
+- **Next, per the agreed order:** step 3, the overall doc update in the UE repo
+  (`D:\Dev\Unreal\Source5.7\Games\TowerClash\Documentation\GAME_PROJECTS\TowerClash\`).
+  - Fix the "UE doc drift" list below.
+  - Record the Godot spike results and the pending engine decision; the UE docs do not
+    mention the spike yet.
+- **Optional spike follow-ups** (if the user picks them first): see "Step 2b Status" below.
+  They are Android, a VPS server, distinct EOS users, deck editing and real art.
+- **Then:** the iOS export/device test (Mac), then back to UE or a switch, based on the result.
+- **Agent tooling:** the session moved from GitHub Copilot CLI to Claude Code on 2026-10-03.
+  The agent guide is shared: `.github/copilot-instructions.md`, imported by `CLAUDE.md`.
+
 ## Project Context (short)
 
 - TowerClash: competitive 1v1 mobile tower defense (iOS first, then Android; PC/web later).
