@@ -1,5 +1,5 @@
 {
-  "_note": "Spike values from GDD 3.2/4.1/4.2. Not balanced.",
+  "_note": "Spike values from GDD 3.2/4.1/4.2. Not balanced. card_upgrade_damage_bonus (+25% per card level) is a spike assumption; the GDD gives only the costs.",
   "start_gold": 100,
   "base_hp": 3,
   "tower_cost_base": 10,
@@ -15,5 +15,7 @@
   "slot_pitch_cm": 130,
   "recycle_spawn_interval_s": 1.0,
   "deck_size": 5,
+  "card_upgrade_costs": [100, 200, 400],
+  "card_upgrade_damage_bonus": 0.25,
   "default_deck": ["Basic", "Sniper", "Rapid", "Splash", "Slow"]
 }

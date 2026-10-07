@@ -23,6 +23,8 @@ var is_server := false
 var sim: MatchSim
 var my_index := -1
 var names: Array = ["", ""]
+## Both players' decks, sent with match_info (shown in the HUD: opponent deck row, upgrade bar).
+var decks: Array = [[], []]
 var reject_reason := ""
 
 # server
@@ -313,7 +315,7 @@ func hello(deck: Array, player_name: String) -> void:
 		sim.start()
 		log_line("match started seed %d: '%s' vs '%s'" % [seed_value, names[0], names[1]])
 		for pid in _connected_player_peers():
-			match_info.rpc_id(pid, names)
+			match_info.rpc_id(pid, names, _decks)
 		if _use_eos:
 			Online.server_set_state(Online.STATE_IN_MATCH)
 
@@ -346,6 +348,20 @@ func request_merge(src: int, dst: int) -> void:
 	action_result.rpc_id(id, res)
 
 
+@rpc("any_peer", "reliable")
+func request_upgrade(deck_index: int) -> void:
+	if not is_server or sim == null:
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if not _peer_to_index.has(id):
+		return
+	var res := sim.request_upgrade(_peer_to_index[id], deck_index)
+	res["action"] = "upgrade"
+	if args.has("verbose"):
+		log_line("upgrade p%d #%d -> %s" % [_peer_to_index[id], deck_index, str(res)])
+	action_result.rpc_id(id, res)
+
+
 # ---------------------------------------------------------------- client
 
 ## Returns false if the ENet client could not be created. Success is signalled later by
@@ -375,6 +391,7 @@ func leave() -> void:
 	multiplayer.multiplayer_peer = null
 	my_index = -1
 	names = ["", ""]
+	decks = [[], []]
 	_hello = {}
 	_leaving = false
 
@@ -422,8 +439,9 @@ func rejected(reason: String) -> void:
 
 
 @rpc("authority", "reliable")
-func match_info(player_names: Array) -> void:
+func match_info(player_names: Array, player_decks: Array) -> void:
 	names = player_names
+	decks = player_decks
 	match_info_received.emit(player_names)
 
 

@@ -1,7 +1,7 @@
 {
-  "Basic":  {"damage": 10, "range": 400, "rate": 1.0, "targeting": "FurthestAlongPath", "tint": [0.95, 0.95, 0.95]},
-  "Sniper": {"damage": 50, "range": 800, "rate": 0.3, "targeting": "HighestHealth", "tint": [0.45, 0.6, 1.0]},
-  "Rapid":  {"damage": 3, "range": 350, "rate": 4.0, "targeting": "LowestHealth", "tint": [1.0, 0.9, 0.3]},
-  "Splash": {"damage": 15, "range": 350, "rate": 0.8, "targeting": "ClosestDistance", "splash_radius": 150, "tint": [1.0, 0.5, 0.25]},
-  "Slow":   {"damage": 5, "range": 300, "rate": 2.0, "targeting": "MostRecent", "slow_factor": 0.5, "slow_time": 2.0, "tint": [0.4, 1.0, 0.9]}
+  "Basic":  {"damage": 10, "range": 400, "rate": 1.0, "targeting": "FurthestAlongPath", "tint": [0.95, 0.95, 0.95], "look": {"kind": "archer", "color": "#4fbf4a", "accent": "#8a5532", "shot": "arrow"}},
+  "Sniper": {"damage": 50, "range": 800, "rate": 0.3, "targeting": "HighestHealth", "tint": [0.45, 0.6, 1.0], "look": {"kind": "mage", "color": "#3f7fe0", "accent": "#7fe6ff", "shot": "bolt"}},
+  "Rapid":  {"damage": 3, "range": 350, "rate": 4.0, "targeting": "LowestHealth", "tint": [1.0, 0.9, 0.3], "look": {"kind": "rapid", "color": "#f2b52c", "accent": "#e8eef2", "shot": "dart"}},
+  "Splash": {"damage": 15, "range": 350, "rate": 0.8, "targeting": "ClosestDistance", "splash_radius": 150, "tint": [1.0, 0.5, 0.25], "look": {"kind": "bomber", "color": "#e8573a", "accent": "#ffb43a", "shot": "bomb"}},
+  "Slow":   {"damage": 5, "range": 300, "rate": 2.0, "targeting": "MostRecent", "slow_factor": 0.5, "slow_time": 2.0, "tint": [0.4, 1.0, 0.9], "look": {"kind": "frost", "color": "#35b9c9", "accent": "#a8f4ff", "shot": "ice"}}
 }

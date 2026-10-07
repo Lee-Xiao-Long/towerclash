@@ -1,38 +1,45 @@
 class_name ArenaView
 extends Node3D
 ## Client presentation. Turns server snapshots (player index, slot index, path distance)
-## into cosmetics. Own board at the bottom, opponent's board rotated 180 deg at the top.
+## into cosmetics. Own board at the bottom, opponent's board mirrored across the river at the top
+## (Rush Royale layout: both portals on the left, both castles on the right).
 ## In the app flow (app_mode) it is created per match and emits finished() instead of quitting.
 
 signal match_started
 ## res is the server result, or empty if the connection was lost before the match ended.
 signal finished(res: Dictionary)
 
-const BOARD_OFFSET_M := 4.0
 const INTERP_DELAY_S := 0.12
 const TILT_FROM_VERTICAL_DEG := 40.0   # Canonical.json camera.tilt_from_vertical_deg
 const LIGHT_AZIMUTH_DEG := 135.0       # Canonical.json key_light
 const LIGHT_ELEVATION_DEG := 45.0
-const VIEW_WIDTH_M := 10.6
-const BAR_PUSH_M := 3.1
+const VIEW_WIDTH_M := 10.9
+const CAMERA_LOOK_Z := 0.35            # screen centre sits slightly below the river (bottom HUD is taller)
+const SLOT_PICK_CM := 62.0
+const TURN_SPEED := 14.0
+## Figures face the camera (yaw PI turns local -Z toward +Z) and only lean/turn toward their
+## target or walk direction, so faces stay readable from the 40 deg view, like the reference.
+const FACE_CAMERA_YAW := PI
+const TOWER_TURN_LIMIT := 1.1
+const CREATURE_LEAN := 0.75
 
 var camera: Camera3D
-var cam_basis: Basis
 var hud: Hud
+var art: ArenaArt
+var fx: Fx
 var app_mode := false
 var force_bot := false
 
 var _buf: Array = []
 var _latest: Dictionary = {}
-var _enemy_nodes: Dictionary = {}     # id -> {sprite, bar, fill}
-var _tower_nodes: Dictionary = {}     # "p:slot" -> {sprite, label, type, level}
-var _gates: Array = [null, null]
-var _tracers: Array = []
-var _floaters: Array = []
+var _enemy_nodes: Dictionary = {}     # id -> creature dict + {board, max_hp, last_hp, pos}
+var _tower_nodes: Dictionary = {}     # "p:slot" -> tower dict + {type, level, yaw, want_yaw}
+var _kills: Dictionary = {}           # enemy id -> [killer, to_opponent] awaiting node removal
 var _now := 0.0
 var _joined_at := -1.0
 var _result: Dictionary = {}
 var _counts := {"snapshots": 0, "shots": 0, "kills": 0, "base_hits": 0, "max_enemies": 0, "place_ok": 0, "place_fail": 0, "merge_ok": 0, "merge_fail": 0}
+var _last_wave := -1
 
 var _bot := false
 var _bot_cd := 0.0
@@ -41,6 +48,7 @@ var _bot_rng := RandomNumberGenerator.new()
 var _shots_at: Array = []
 var _shot_prefix := ""
 var _drag_src := -1
+var _drag_pos := Vector3.ZERO
 var _started := false
 var _finished := false
 
@@ -54,8 +62,10 @@ func _ready() -> void:
 		_shots_at.append(float(s))
 	_build_world()
 	hud = Hud.new()
+	hud.camera = camera
 	add_child(hud)
 	hud.add_tower_pressed.connect(_on_add_tower)
+	hud.upgrade_pressed.connect(func(i: int): Net.request_upgrade.rpc_id(1, i))
 	hud.return_pressed.connect(_finish)
 	hud.set_names(Net.names, Net.my_index)
 	if Net.my_index >= 0:
@@ -108,24 +118,11 @@ func _finish() -> void:
 # ---------------------------------------------------------------- world
 
 func _build_world() -> void:
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.09, 0.1, 0.13)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.62, 0.72, 0.9)
-	e.ambient_light_energy = 0.45
-	env.environment = e
-	add_child(env)
-
-	var sun := DirectionalLight3D.new()
-	var az := deg_to_rad(LIGHT_AZIMUTH_DEG)
-	var el := deg_to_rad(LIGHT_ELEVATION_DEG)
-	var from := Vector3(sin(az) * cos(el), sin(el), -cos(az) * cos(el))
-	add_child(sun)
-	sun.look_at_from_position(from * 10.0, Vector3.ZERO, Vector3.UP)
-	sun.light_color = Color(1.0, 0.93, 0.82)
-	sun.shadow_enabled = true
+	art = ArenaArt.new()
+	add_child(art)
+	art.build()
+	fx = Fx.new()
+	add_child(fx)
 
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -134,67 +131,24 @@ func _build_world() -> void:
 	camera.near = 0.1
 	camera.far = 200.0
 	camera.rotation_degrees = Vector3(-(90.0 - TILT_FROM_VERTICAL_DEG), 0, 0)
-	camera.position = camera.basis.z * 40.0
+	camera.position = Vector3(0, 0, CAMERA_LOOK_Z) + camera.basis.z * 40.0
 	add_child(camera)
-	cam_basis = camera.basis
-
-	for p in 2:
-		_build_board(p == 0)
-
-
-func _mat(c: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.roughness = 0.9
-	return m
-
-
-func _box(size: Vector3, pos: Vector3, c: Color) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
-	bm.material = _mat(c)
-	mi.mesh = bm
-	mi.position = pos
-	add_child(mi)
-	return mi
-
-
-## mine = the board shown at the bottom (the local player's). Board-local geometry is
-## identical for both; only the world transform differs.
-func _build_board(mine: bool) -> void:
-	var tint := Color(0.33, 0.5, 0.3) if mine else Color(0.42, 0.36, 0.3)
-	var centre := _board_world(mine, Vector2.ZERO)
-	_box(Vector3(10.4, 0.1, 7.6), centre + Vector3(0, -0.05, 0), tint)
-	for s in GameData.slot_count():
-		var p := _board_world(mine, BoardLayout.slot_pos(s))
-		_box(Vector3(1.1, 0.04, 1.1), p + Vector3(0, 0.02, 0), tint.lightened(0.25))
-	var pts := BoardLayout.path_points()
-	for i in range(1, pts.size()):
-		var a := _board_world(mine, pts[i - 1])
-		var b := _board_world(mine, pts[i])
-		var mid := (a + b) * 0.5
-		var size := Vector3(absf(b.x - a.x) + 0.8, 0.03, absf(b.z - a.z) + 0.8)
-		_box(size, mid + Vector3(0, 0.015, 0), Color(0.55, 0.45, 0.3))
-	_box(Vector3(0.9, 0.3, 0.9), _board_world(mine, pts[0]) + Vector3(0, 0.15, 0), Color(0.3, 0.3, 0.35))
-	var gate := _box(Vector3(1.0, 0.8, 0.5), _board_world(mine, pts[pts.size() - 1]) + Vector3(0, 0.4, 0), Color(0.75, 0.7, 0.6))
-	gate.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	_gates[0 if mine else 1] = gate
-
-
-## Board-local cm -> world metres. "mine" boards sit at the bottom, unrotated.
-func _board_world(mine: bool, v: Vector2) -> Vector3:
-	if mine:
-		return Vector3(v.x / 100.0, 0, v.y / 100.0 + BOARD_OFFSET_M)
-	return Vector3(-v.x / 100.0, 0, -v.y / 100.0 - BOARD_OFFSET_M)
+	fx.camera = camera
 
 
 func _is_mine(board: int) -> bool:
 	return board == Net.my_index or Net.my_index < 0 and board == 0
 
 
-func _heading_world(board: int, v: Vector2) -> Vector2:
-	return v if _is_mine(board) else -v
+func _slot_world(p: int, slot: int) -> Vector3:
+	return ArenaArt.board_world(_is_mine(p), BoardLayout.slot_pos(slot))
+
+
+## Yaw that turns a figure's local -Z toward world direction d (x, z), clamped to an arc around
+## facing the camera.
+static func _yaw_for(d: Vector2, limit := TOWER_TURN_LIMIT) -> float:
+	var full := atan2(-d.x, -d.y)
+	return FACE_CAMERA_YAW + clampf(angle_difference(FACE_CAMERA_YAW, full), -limit, limit)
 
 
 # ---------------------------------------------------------------- snapshots
@@ -219,57 +173,80 @@ func _on_snapshot(snap: Dictionary) -> void:
 	_sync_towers(snap)
 	for s in snap.sh:
 		_counts.shots += 1
-		_tracer(int(s[0]), int(s[1]), int(s[2]))
+		_on_shot(int(s[0]), int(s[1]), int(s[2]))
 	for k in snap.k:
 		_counts.kills += 1
-		_floater(int(k[0]), "+recycle" if k[2] else "x")
+		_kills[int(k[0])] = [int(k[1]), bool(k[2])]
 	for h in snap.h:
 		_counts.base_hits += 1
-		_flash_gate(int(h[0]))
+		_on_base_hit(int(h[0]))
+	if int(snap.ph) == MatchSim.Phase.WAVE and int(snap.r) != _last_wave:
+		_last_wave = int(snap.r)
+		hud.announce_wave(_last_wave + 1, _is_boss_round(_last_wave))
 	hud.update_from(snap, Net.my_index)
+
+
+func _is_boss_round(r: int) -> bool:
+	if r < 0 or r >= GameData.rounds.size():
+		return false
+	for entry in GameData.rounds[r].spawns:
+		if GameData.enemies[entry[0]].get("boss", false):
+			return true
+	return false
 
 
 func _sync_towers(snap: Dictionary) -> void:
 	var seen := {}
 	for p in 2:
 		for row in snap.tw[p]:
-			var key := "%d:%d" % [p, int(row[0])]
+			var slot := int(row[0])
+			var key := "%d:%d" % [p, slot]
 			seen[key] = true
 			var type: String = _tower_type(int(row[1]))
 			var level := int(row[2])
 			var n: Dictionary = _tower_nodes.get(key, {})
+			if not n.is_empty() and n.type != type:
+				# Merge result is a new random type: rebuild the figure in place.
+				n.root.queue_free()
+				_tower_nodes.erase(key)
+				n = {}
 			if n.is_empty():
-				var spr := DirSprite.new()
-				add_child(spr)
-				spr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				spr.setup(SpriteSheet.get_sheet("StandIn_Blocky"), "Idle", cam_basis)
-				spr.set_foot(_board_world(_is_mine(p), BoardLayout.slot_pos(int(row[0]))))
-				spr.set_heading(Vector2(0, 1) if _is_mine(p) else Vector2(0, -1))
-				var lbl := Label3D.new()
-				lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-				lbl.font_size = 48
-				lbl.pixel_size = 0.005
-				lbl.outline_size = 12
-				lbl.no_depth_test = true
-				lbl.position = spr.position + cam_basis.y * 0.85
-				add_child(lbl)
-				n = {"sprite": spr, "label": lbl, "type": "", "level": 0}
+				n = Figures.tower(type, level)
+				add_child(n.root)
+				n.root.position = _slot_world(p, slot)
+				n.merge({"type": type, "level": level, "yaw": FACE_CAMERA_YAW, "want_yaw": FACE_CAMERA_YAW, "board": p, "slot": slot})
+				n.body.rotation.y = n.yaw
 				_tower_nodes[key] = n
-			if n.type != type or n.level != level:
-				n.type = type
+				_pop_in(n.root, level > 1)
+				if _is_mine(p):
+					Sfx.play("merge" if level > 1 else "summon", 0.04)
+				fx.ring(n.root.position, Figures.look_color(GameData.towers[type]).lightened(0.4), 0.7, 0.35)
+				if level > 1:
+					fx.puff(n.root.position, Color("fff3b0"), 8, 0.1)
+			elif n.level != level:
 				n.level = level
-				var c: Array = GameData.towers[type].tint
-				n.sprite.modulate = Color(c[0], c[1], c[2])
-				n.label.text = "%s %s" % [type, "*".repeat(level)]
-				n.label.modulate = Color(c[0], c[1], c[2])
+				Figures.set_pips(n.pips, level)
+				_pop_in(n.root, true)
+				if _is_mine(p):
+					Sfx.play("merge", 0.0)
 			var aim := float(row[3])
 			if aim < 8.0:
-				n.sprite.set_heading(_heading_world(p, Vector2.from_angle(aim)))
+				n.want_yaw = _yaw_for(ArenaArt.heading_world(_is_mine(p), Vector2.from_angle(aim)))
 	for key in _tower_nodes.keys():
 		if not seen.has(key):
-			_tower_nodes[key].sprite.queue_free()
-			_tower_nodes[key].label.queue_free()
+			var n: Dictionary = _tower_nodes[key]
+			fx.puff(n.root.position, Color("fff3b0"), 5, 0.08)
+			n.root.queue_free()
 			_tower_nodes.erase(key)
+			if _drag_src >= 0 and key == "%d:%d" % [Net.my_index, _drag_src]:
+				_drag_src = -1
+
+
+func _pop_in(root: Node3D, big: bool) -> void:
+	root.scale = Vector3(0.2, 0.2, 0.2)
+	var t := create_tween()
+	t.tween_property(root, "scale", Vector3.ONE * (1.25 if big else 1.1), 0.12).set_ease(Tween.EASE_OUT)
+	t.tween_property(root, "scale", Vector3.ONE, 0.25).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 
 func _tower_type(i: int) -> String:
@@ -287,9 +264,36 @@ func _enemy_type(i: int) -> String:
 func _process(delta: float) -> void:
 	_now += delta
 	_update_enemies()
-	_update_fx(delta)
+	_update_towers(delta)
 	_bot_tick(delta)
 	_screenshot_tick()
+
+
+func _update_towers(delta: float) -> void:
+	var drag_key := "%d:%d" % [Net.my_index, _drag_src] if _drag_src >= 0 else ""
+	var drag_def := {}
+	if drag_key != "" and _tower_nodes.has(drag_key):
+		drag_def = _tower_nodes[drag_key]
+	for key in _tower_nodes:
+		var n: Dictionary = _tower_nodes[key]
+		n.yaw = lerp_angle(n.yaw, n.want_yaw, minf(1.0, delta * TURN_SPEED))
+		n.body.rotation.y = n.yaw
+		# Idle breathing so the board never looks frozen.
+		var ph := float(hash(key) % 100) * 0.1
+		n.body.scale.y = lerpf(n.body.scale.y, 1.0 + sin(_now * 3.0 + ph) * 0.03, minf(1.0, delta * 10.0))
+		var lift := 0.0
+		var ring_glow := 1.0
+		if not drag_def.is_empty():
+			if key == drag_key:
+				lift = 0.0
+			elif n.board == Net.my_index and n.type == drag_def.type and n.level == drag_def.level \
+					and n.level < int(GameData.rules.max_tower_level):
+				ring_glow = 1.0 + 0.35 * (0.5 + 0.5 * sin(_now * 12.0))
+		n.ring.scale = Vector3.ONE * ring_glow
+		if key == drag_key:
+			n.body.global_position = n.body.global_position.lerp(_drag_pos + Vector3(0, 0.45, 0), minf(1.0, delta * 25.0))
+		else:
+			n.body.position = n.body.position.lerp(Vector3(0, 0.12 + lift, 0), minf(1.0, delta * 18.0))
 
 
 func _update_enemies() -> void:
@@ -314,123 +318,104 @@ func _update_enemies() -> void:
 		_place_enemy(id, row, d)
 	for id in _enemy_nodes.keys():
 		if not live.has(id):
-			_enemy_nodes[id].root.queue_free()
-			_enemy_nodes.erase(id)
+			_remove_enemy(id)
+
+
+func _remove_enemy(id: int) -> void:
+	var n: Dictionary = _enemy_nodes[id]
+	var pos: Vector3 = n.root.position
+	if _kills.has(id):
+		var k: Array = _kills[id]
+		_kills.erase(id)
+		fx.puff(pos, Color.WHITE, 7 if n.scale < 1.5 else 14, 0.11 * maxf(1.0, n.scale * 0.7))
+		Sfx.play("kill", 0.12, 0.0 if _is_mine(n.board) else -12.0)
+		if n.scale >= 1.5:
+			fx.shake(0.12, 0.3)
+		if k[1]:
+			# Recycled: the kill reappears on the killer's opponent's board.
+			var target_mine := not _is_mine(int(k[0]))
+			var portal := ArenaArt.board_world(target_mine, BoardLayout.path_points()[0] + Vector2(0, 60))
+			fx.recycle_orb(pos, portal, art.pulse_portal.bind(target_mine))
+	n.root.queue_free()
+	_enemy_nodes.erase(id)
 
 
 func _place_enemy(id: int, row: Array, dist: float) -> void:
 	var board := int(row[1])
 	var n: Dictionary = _enemy_nodes.get(id, {})
 	if n.is_empty():
-		var def: Dictionary = GameData.enemies[_enemy_type(int(row[2]))]
-		var root := Node3D.new()
-		add_child(root)
-		var spr := DirSprite.new()
-		root.add_child(spr)
-		spr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var sheet := SpriteSheet.get_sheet(def.sprite)
-		spr.setup(sheet, def.anim, cam_basis)
-		var bar := Node3D.new()
-		root.add_child(bar)
-		bar.basis = cam_basis
-		var back := _quad(Vector2(0.5, 0.06), Color(0.1, 0.1, 0.1))
-		bar.add_child(back)
-		var fill := _quad(Vector2(0.5, 0.06), Color(0.3, 1.0, 0.3))
-		fill.position.z = 0.01
-		bar.add_child(fill)
-		var top := (sheet.pivot.y - sheet.content_rect.position.y) * sheet.cm_per_pixel / 100.0 + 0.08
-		var c: Array = def.tint
-		n = {"root": root, "sprite": spr, "bar": bar, "fill": fill, "top": top, "tint": Color(c[0], c[1], c[2])}
+		var type := _enemy_type(int(row[2]))
+		n = Figures.creature(type)
+		n.body.rotation.y = FACE_CAMERA_YAW
+		add_child(n.root)
+		n.merge({"board": board, "max_hp": float(GameData.enemies[type].hp), "last_frac": 1.0,
+			"phase": randf() * TAU, "speed": float(GameData.enemies[type].speed), "flash": 0.0})
+		n.hp_label.position = Vector3(-0.3 * n.scale - 0.12, 0.25 * n.scale, 0)
 		_enemy_nodes[id] = n
+		n.root.scale = Vector3.ONE * 0.3
+		create_tween().tween_property(n.root, "scale", Vector3.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		if dist < 30.0:
+			art.pulse_portal(_is_mine(board))
 	var mine := _is_mine(board)
-	var foot := _board_world(mine, BoardLayout.path_point(dist))
-	var ahead := _board_world(mine, BoardLayout.path_point(dist + 5.0))
-	n.sprite.set_foot(foot)
-	n.sprite.set_heading(Vector2(ahead.x - foot.x, ahead.z - foot.z))
-	n.bar.position = foot + cam_basis.z * BAR_PUSH_M + cam_basis.y * n.top
+	var foot := ArenaArt.board_world(mine, BoardLayout.path_point(dist))
+	var ahead := ArenaArt.board_world(mine, BoardLayout.path_point(dist + 5.0))
+	n.root.position = foot
+	var dir := Vector2(ahead.x - foot.x, ahead.z - foot.z)
+	if dir.length_squared() > 1e-8:
+		n.body.rotation.y = lerp_angle(n.body.rotation.y, FACE_CAMERA_YAW + dir.normalized().x * CREATURE_LEAN, 0.2)
+	# Waddle: hop + squash, speed-scaled.
+	var t: float = _now * (6.0 + n.speed * 0.02) + n.phase
+	var hop := absf(sin(t))
+	n.body.position.y = hop * 0.06 * n.scale
+	var sq := 1.0 - (1.0 - hop) * 0.12
+	var hit: float = n.flash
+	n.body.scale = Vector3(n.scale * (2.0 - sq + hit * 0.25), n.scale * (sq - hit * 0.2), n.scale * (2.0 - sq))
+	n.flash = maxf(0.0, n.flash - get_process_delta_time() * 6.0)
 	var frac := float(row[4])
-	n.fill.scale.x = maxf(frac, 0.001)
-	n.fill.position.x = -0.25 * (1.0 - frac)
+	if frac < n.last_frac - 0.001:
+		n.flash = 1.0
+	n.last_frac = frac
+	n.hp_label.text = str(maxi(1, int(ceil(frac * n.max_hp))))
 	var flags := int(row[5])
-	var col: Color = n.tint
-	if flags & 1:
-		col = col.lerp(Color(0.4, 0.9, 1.0), 0.6) * 1.3
-	if flags & 2:
-		col = col.lerp(Color(0.3, 0.5, 1.0), 0.4)
-	n.sprite.modulate = col
+	n.recycled.visible = flags & 1 != 0
+	n.slowed.visible = flags & 2 != 0
 
 
-func _quad(size: Vector2, c: Color) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = size
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = c
-	q.material = m
-	mi.mesh = q
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return mi
+# ---------------------------------------------------------------- events
 
-
-# ---------------------------------------------------------------- fx
-
-func _tracer(p: int, slot: int, enemy_id: int) -> void:
+func _on_shot(p: int, slot: int, enemy_id: int) -> void:
+	var key := "%d:%d" % [p, slot]
+	if not _tower_nodes.has(key):
+		return
+	var n: Dictionary = _tower_nodes[key]
+	# Recoil punch on the figure.
+	n.body.scale = Vector3(1.18, 0.82, 1.18)
+	create_tween().tween_property(n.body, "scale", Vector3.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	if not _enemy_nodes.has(enemy_id):
 		return
-	var from := _board_world(_is_mine(p), BoardLayout.slot_pos(slot)) + Vector3(0, 0.55, 0)
-	var en: Dictionary = _enemy_nodes[enemy_id]
-	var to: Vector3 = en.sprite.position - cam_basis.z * DirSprite.CAMERA_PUSH_M + Vector3(0, 0.35, 0)
-	var im := ImmediateMesh.new()
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(1, 1, 0.6)
-	im.surface_begin(Mesh.PRIMITIVE_LINES, m)
-	im.surface_add_vertex(from + cam_basis.z * 2.9)
-	im.surface_add_vertex(to + cam_basis.z * 2.9)
-	im.surface_end()
-	var mi := MeshInstance3D.new()
-	mi.mesh = im
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-	_tracers.append({"node": mi, "t": 0.08})
+	var kind := str(GameData.towers[n.type].get("look", {}).get("shot", "arrow"))
+	var from: Vector3 = n.root.position + Vector3(0, 0.65, 0)
+	fx.shoot(kind, from, _enemy_aim.bind(enemy_id), enemy_id)
+	if _is_mine(p):
+		Sfx.play("shot_" + kind, 0.1, -5.0)
 
 
-func _floater(enemy_id: int, text: String) -> void:
+## Current aim point on an enemy (chest height), or null once it is gone.
+func _enemy_aim(enemy_id: int):
 	if not _enemy_nodes.has(enemy_id):
-		return
-	var lbl := Label3D.new()
-	lbl.text = text
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lbl.no_depth_test = true
-	lbl.font_size = 40
-	lbl.pixel_size = 0.005
-	lbl.outline_size = 10
-	lbl.modulate = Color(0.5, 1, 1) if text.begins_with("+") else Color(1, 0.6, 0.4)
-	lbl.position = _enemy_nodes[enemy_id].bar.position
-	add_child(lbl)
-	_floaters.append({"node": lbl, "t": 0.8})
+		return null
+	var n: Dictionary = _enemy_nodes[enemy_id]
+	return n.root.position + Vector3(0, 0.28 * n.scale, 0)
 
 
-func _flash_gate(board: int) -> void:
-	var g: MeshInstance3D = _gates[0 if _is_mine(board) else 1]
-	var m: StandardMaterial3D = (g.mesh as BoxMesh).material
-	m.albedo_color = Color(1, 0.2, 0.2)
-	get_tree().create_timer(0.3).timeout.connect(func(): m.albedo_color = Color(0.75, 0.7, 0.6))
-
-
-func _update_fx(delta: float) -> void:
-	for t in _tracers.duplicate():
-		t.t -= delta
-		if t.t <= 0.0:
-			t.node.queue_free()
-			_tracers.erase(t)
-	for f in _floaters.duplicate():
-		f.t -= delta
-		f.node.position += cam_basis.y * delta * 0.6
-		if f.t <= 0.0:
-			f.node.queue_free()
-			_floaters.erase(f)
+func _on_base_hit(board: int) -> void:
+	var mine := _is_mine(board)
+	art.hit_castle(mine)
+	var castle_pos := ArenaArt.board_world(mine, BoardLayout.path_points()[-1] + Vector2(0, 75))
+	fx.puff(castle_pos + Vector3(0, 0.4, 0), Color("ff6b5b"), 10, 0.13)
+	if mine:
+		fx.shake(0.2, 0.35)
+	hud.base_hit(mine)
 
 
 # ---------------------------------------------------------------- input (drag to merge)
@@ -438,25 +423,38 @@ func _update_fx(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if Net.my_index < 0 or _latest.is_empty():
 		return
+	if event is InputEventMouseMotion and _drag_src >= 0:
+		var g = _ground_point(event.position)
+		if g != null:
+			_drag_pos = g
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		var slot := _slot_under(event.position)
 		if event.pressed:
 			_drag_src = slot if _has_my_tower(slot) else -1
+			if _drag_src >= 0:
+				var g = _ground_point(event.position)
+				_drag_pos = g if g != null else _slot_world(Net.my_index, slot)
 		elif _drag_src >= 0:
 			if slot >= 0 and slot != _drag_src and _has_my_tower(slot):
 				Net.request_merge.rpc_id(1, _drag_src, slot)
 			_drag_src = -1
 
 
-func _slot_under(screen_pos: Vector2) -> int:
+func _ground_point(screen_pos: Vector2):
 	var o := camera.project_ray_origin(screen_pos)
 	var d := camera.project_ray_normal(screen_pos)
 	if absf(d.y) < 1e-5:
+		return null
+	return o + d * (-o.y / d.y)
+
+
+func _slot_under(screen_pos: Vector2) -> int:
+	var hit = _ground_point(screen_pos)
+	if hit == null:
 		return -1
-	var hit := o + d * (-o.y / d.y)
-	var local := Vector2(hit.x * 100.0, (hit.z - BOARD_OFFSET_M) * 100.0)
+	var local := ArenaArt.world_to_mine(hit)
 	for s in GameData.slot_count():
-		if BoardLayout.slot_pos(s).distance_to(local) <= 60.0:
+		if BoardLayout.slot_pos(s).distance_to(local) <= SLOT_PICK_CM:
 			return s
 	return -1
 
@@ -470,6 +468,8 @@ func _on_action(res: Dictionary) -> void:
 	var key := "%s_%s" % [res.get("action", "?"), "ok" if res.get("ok", false) else "fail"]
 	if _counts.has(key):
 		_counts[key] += 1
+	if not res.get("ok", false):
+		hud.action_failed(str(res.get("action", "")), str(res.get("reason", "")))
 
 
 # ---------------------------------------------------------------- bot
@@ -499,6 +499,13 @@ func _bot_tick(delta: float) -> void:
 	if int(me[0]) >= int(me[2]) and towers.size() < GameData.slot_count():
 		_bot_pending = true
 		Net.request_place.rpc_id(1)
+	elif towers.size() >= 8 and _bot_rng.randf() < 0.1:
+		var i := _bot_rng.randi_range(0, me[5].size() - 1)
+		var costs: Array = GameData.rules.card_upgrade_costs
+		var lvl := int(me[5][i])
+		if lvl <= costs.size() and int(me[0]) >= int(costs[lvl - 1]):
+			_bot_pending = true
+			Net.request_upgrade.rpc_id(1, i)
 
 
 # ---------------------------------------------------------------- end / screenshots
@@ -516,7 +523,7 @@ func _on_match_ended(res: Dictionary) -> void:
 	}
 	Net.log_line("CLIENT_RESULT " + JSON.stringify(report))
 	if _shot_prefix != "":
-		await get_tree().create_timer(0.5).timeout
+		await get_tree().create_timer(0.8).timeout
 		await _save_shot(_shot_prefix + "_end.png")
 	if Net.args.has("quit-on-end") and not app_mode:
 		await get_tree().create_timer(1.0).timeout

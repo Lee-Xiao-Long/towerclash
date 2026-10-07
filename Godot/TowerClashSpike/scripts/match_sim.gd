@@ -25,7 +25,7 @@ var _hits: Array = []
 
 var tower_types: Array = []
 var enemy_types: Array = []
-var stats := {"shots": 0, "kills": 0, "recycled_spawns": 0, "base_hits": 0, "placements": 0, "merges": 0}
+var stats := {"shots": 0, "kills": 0, "recycled_spawns": 0, "base_hits": 0, "placements": 0, "merges": 0, "upgrades": 0}
 
 
 func setup(decks: Array, seed_value: int) -> void:
@@ -37,6 +37,9 @@ func setup(decks: Array, seed_value: int) -> void:
 	enemy_types.sort()
 	players.clear()
 	for i in 2:
+		var levels: Array = []
+		levels.resize(decks[i].size())
+		levels.fill(1)
 		players.append({
 			"deck": decks[i],
 			"gold": int(GameData.rules.start_gold),
@@ -48,6 +51,7 @@ func setup(decks: Array, seed_value: int) -> void:
 			"recycle_cd": 0.0,
 			"damaged_this_wave": false,
 			"kills": 0,
+			"card_levels": levels,
 		})
 
 
@@ -79,6 +83,31 @@ func request_place(p: int) -> Dictionary:
 	pl.towers[slot] = {"type": type, "level": 1, "cd": 0.5, "aim": Vector2.ZERO}
 	stats.placements += 1
 	return {"ok": true, "slot": slot, "type": type}
+
+
+## In-match card upgrade (GDD 3.2.4 "tower type upgrade"): raises one deck type's level for every
+## tower of that type, current and future. Costs come from rules.card_upgrade_costs.
+func next_upgrade_cost(p: int, deck_index: int) -> int:
+	var costs: Array = GameData.rules.card_upgrade_costs
+	var lvl: int = players[p].card_levels[deck_index]
+	return -1 if lvl > costs.size() else int(costs[lvl - 1])
+
+
+func request_upgrade(p: int, deck_index: int) -> Dictionary:
+	if phase == Phase.ENDED or phase == Phase.WAITING:
+		return {"ok": false, "reason": "not_running"}
+	var pl: Dictionary = players[p]
+	if deck_index < 0 or deck_index >= pl.deck.size():
+		return {"ok": false, "reason": "index"}
+	var cost := next_upgrade_cost(p, deck_index)
+	if cost < 0:
+		return {"ok": false, "reason": "max"}
+	if pl.gold < cost:
+		return {"ok": false, "reason": "gold"}
+	pl.gold -= cost
+	pl.card_levels[deck_index] += 1
+	stats.upgrades += 1
+	return {"ok": true, "index": deck_index, "level": pl.card_levels[deck_index]}
 
 
 func request_merge(p: int, src: int, dst: int) -> Dictionary:
@@ -251,9 +280,11 @@ func _remove_enemy(e: Dictionary) -> void:
 
 # ---------------------------------------------------------------- towers
 
-func tower_damage(t: Dictionary) -> float:
+func tower_damage(p: int, t: Dictionary) -> float:
 	var def: Dictionary = GameData.towers[t.type]
-	return float(def.damage) * pow(float(GameData.rules.merge_power_multiplier), int(t.level) - 1)
+	var pl: Dictionary = players[p]
+	var card := int(pl.card_levels[pl.deck.find(t.type)])
+	return float(def.damage) * pow(float(GameData.rules.merge_power_multiplier), int(t.level) - 1) 			* (1.0 + float(GameData.rules.card_upgrade_damage_bonus) * (card - 1))
 
 
 func _towers_tick(p: int, dt: float) -> void:
@@ -274,7 +305,7 @@ func _towers_tick(p: int, dt: float) -> void:
 		t.aim = tpos - pos
 		stats.shots += 1
 		_shots.append([p, slot, target.id])
-		var dmg := tower_damage(t)
+		var dmg := tower_damage(p, t)
 		if def.has("splash_radius"):
 			for e in enemies.duplicate():
 				if e.board == p and BoardLayout.path_point(e.dist).distance_to(tpos) <= float(def.splash_radius):
@@ -361,7 +392,7 @@ func snapshot() -> Dictionary:
 	var tws: Array = []
 	for p in 2:
 		var pl: Dictionary = players[p]
-		ps.append([pl.gold, pl.base_hp, next_tower_cost(p), pl.recycle_queue.size(), pl.kills])
+		ps.append([pl.gold, pl.base_hp, next_tower_cost(p), pl.recycle_queue.size(), pl.kills, pl.card_levels.duplicate()])
 		var list: Array = []
 		for slot in pl.towers:
 			var t: Dictionary = pl.towers[slot]

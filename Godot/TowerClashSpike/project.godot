@@ -29,6 +29,7 @@ HP2P="*res://addons/epic-online-services-godot/heos/hp2p.gd"
 HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 Net="*res://scripts/net.gd"
 Online="*res://scripts/online.gd"
+Sfx="*res://scripts/client/sfx.gd"
 
 [display]
 
@@ -37,6 +38,10 @@ window/size/viewport_height=960
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
+
+[gui]
+
+theme/custom_font="res://assets/fonts/LilitaOne-Regular.ttf"
 
 [editor_plugins]
 

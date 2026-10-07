@@ -64,3 +64,8 @@ static func bot_decide(sim: MatchSim, p: int, rng: RandomNumberGenerator) -> voi
 			by_key[k] = slot
 	if sim.players[p].gold >= sim.next_tower_cost(p):
 		sim.request_place(p)
+	elif towers.size() >= 8 and rng.randf() < 0.1:
+		var i := rng.randi_range(0, sim.players[p].deck.size() - 1)
+		var cost := sim.next_upgrade_cost(p, i)
+		if cost > 0 and sim.players[p].gold >= cost:
+			sim.request_upgrade(p, i)

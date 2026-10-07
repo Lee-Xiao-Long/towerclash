@@ -3,6 +3,7 @@ extends RefCounted
 ## Binary snapshot codec. MatchSim.snapshot() Dictionary <-> PackedByteArray.
 ## Keeps a full-state snapshot well under the ENet MTU (~1392 B) so unreliable sends are not
 ## fragmented. Decode returns the same Dictionary shape the client already consumes.
+## Player rows carry the per-deck-slot card levels (u8 each).
 ## Quantisation: dist 1 cm (u16), hp fraction 1/255, tower aim 1/254 turn, enemy id u16 (wraps).
 
 const AIM_NONE := 255
@@ -23,6 +24,10 @@ static func encode(s: Dictionary) -> PackedByteArray:
 		b.put_u16(clampi(int(pl[2]), 0, 65535))
 		b.put_u16(clampi(int(pl[3]), 0, 65535))
 		b.put_u16(clampi(int(pl[4]), 0, 65535))
+		var lv: Array = pl[5]
+		b.put_u8(lv.size())
+		for l in lv:
+			b.put_u8(int(l))
 	for p in 2:
 		var tws: Array = s.tw[p]
 		b.put_u8(tws.size())
@@ -68,7 +73,12 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 	s.tl = b.get_u16() / 10.0
 	s.p = []
 	for p in 2:
-		s.p.append([b.get_u32(), b.get_8(), b.get_u16(), b.get_u16(), b.get_u16()])
+		var row: Array = [b.get_u32(), b.get_8(), b.get_u16(), b.get_u16(), b.get_u16()]
+		var lv: Array = []
+		for i in b.get_u8():
+			lv.append(b.get_u8())
+		row.append(lv)
+		s.p.append(row)
 	s.tw = []
 	for p in 2:
 		var list: Array = []
