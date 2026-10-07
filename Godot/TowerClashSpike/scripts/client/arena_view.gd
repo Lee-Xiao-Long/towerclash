@@ -225,6 +225,7 @@ func _sync_towers(snap: Dictionary) -> void:
 				n.merge({"type": type, "level": level, "yaw": FACE_CAMERA_YAW, "want_yaw": FACE_CAMERA_YAW, "board": p, "slot": slot})
 				n.body.rotation.y = n.yaw
 				_tower_nodes[key] = n
+				_apply_rank(n)
 				if _is_mine(p) and _flights.has(slot):
 					n.root.visible = false   # revealed when the summon card lands
 				else:
@@ -232,6 +233,7 @@ func _sync_towers(snap: Dictionary) -> void:
 			elif n.level != level:
 				n.level = level
 				Figures.set_pips(n.pips, level)
+				_apply_rank(n)
 				_pop_in(n.root, true)
 				if _is_mine(p):
 					Sfx.play("merge", 0.0)
@@ -247,6 +249,12 @@ func _sync_towers(snap: Dictionary) -> void:
 			_tower_nodes.erase(key)
 			if _drag_src >= 0 and key == "%d:%d" % [Net.my_index, _drag_src]:
 				_drag_src = -1
+
+
+## Higher merge ranks read as stronger: the figure grows a little per rank.
+func _apply_rank(n: Dictionary) -> void:
+	var model: Node3D = n.body.get_child(0)
+	model.scale = Vector3.ONE * (1.0 + 0.1 * (int(n.level) - 1))
 
 
 func _reveal_tower(n: Dictionary, merged: bool) -> void:
