@@ -19,6 +19,16 @@
   - Details: `Docs/Art_Baseline.md`. Summary: `Godot_Spike.md` "Rush Royale Baseline Restyle".
   - Later idea from the user: move hot paths to Rust (godot-rust GDExtension) once the game is
     further along. Not started.
+  - Later on 2026-10-07: early waves eased (simtest 200: matches ending in waves 1-2 went
+    47% -> 11%; avg end wave 3.8 -> 5.8; wave 4 is still the main cliff). The card bonus stays +25%.
+  - Mac support: `play_local.sh` / `check.sh` / `get_eosg.sh`. Cross-machine LAN hosting
+    options: `-ServerOnly -PublicAddress`, `-NoServer`, `-Connect`. A `--devauth` DevAuthTool
+    login exists but has not been run. See `Godot_Spike.md` "How to Run".
+  - **Next (user):**
+    1. Test on the MacBook (Retina rendering and performance).
+    2. Headless server hosting reachable from both machines with EOS enabled: Windows LAN host
+       first, then a Docker container with the Linux server export.
+    3. Then client feature refinement.
   - Doc step 3 (UE doc drift) is still open. When it is done, also record in UE
     `Mirrored_View_Architecture.md` that the Godot spike now mirrors the opponent board instead
     of rotating it.

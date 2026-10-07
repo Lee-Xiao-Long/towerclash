@@ -316,5 +316,62 @@ cd Godot/TowerClashSpike
 ```
 
 Logs go to `Godot/logs/<run>_<stamp>/` and exports to `Godot/build/`; both are git-ignored.
+
+### macOS / Linux (shell mirrors of the PowerShell tools)
+
+`tools/play_local.sh`, `tools/check.sh` and `tools/get_eosg.sh` take the same options as the
+`.ps1` tools, in `--kebab-case`.
+- Godot binary: `$GODOT`, default `/Applications/Godot.app/Contents/MacOS/Godot` on a Mac.
+- Tested on Windows under Git Bash (2026-10-07). Not yet run on macOS [Unverified].
+
+```bash
+export GODOT=/Applications/Godot.app/Contents/MacOS/Godot   # if Godot 4.7.2 lives elsewhere
+cd Godot/TowerClashSpike
+./tools/get_eosg.sh          # once per checkout: EOSG addon (macos binaries; clears quarantine)
+./tools/check.sh             # import + parse check
+./tools/play_local.sh --local --bots 1    # server + you vs a bot
+./tools/play_local.sh --local --bots 0    # two manual clients
+./tools/play_local.sh --stop
+```
+
+- The EOS addon is needed even in local mode: the autoloads reference it.
+- `eos_credentials.local.json` is git-ignored. Copy it to the Mac by hand (USB/AirDrop) if you
+  want EOS mode there. Never commit it.
+
+### Cross-machine play (LAN): Windows + Mac clients against one server
+
+Host the server on one machine and tell it which address to advertise.
+- With EOS, clients find it through session search. Without EOS, they connect straight to it.
+- Each machine has its own device ID, so a Windows client and a Mac client are already
+  distinct EOS users. DevAuthTool is only needed for several users on one machine.
+
+```powershell
+# Windows host (this PC's LAN IP, e.g. 192.168.0.16). Allow inbound UDP 7777 once (elevated):
+#   New-NetFirewallRule -DisplayName "TowerClash dev server" -Direction Inbound -Protocol UDP -LocalPort 7777 -Action Allow -Profile Private
+./tools/play_local.ps1 -ServerOnly -PublicAddress 192.168.0.16             # EOS-advertised server
+./tools/play_local.ps1 -Clients 1 -Bots 0 -NoServer                         # a client here, via EOS search
+```
+```bash
+# Mac client
+./tools/play_local.sh --clients 1 --bots 0 --no-server                      # via EOS search
+./tools/play_local.sh --clients 1 --bots 0 --no-server --connect 192.168.0.16:7777   # or direct
+```
+
+- Each role has its own tracking file, so client launches do not stop a `-ServerOnly` server
+  on the same machine. `-Stop` / `--stop` closes all of them.
+
+### Several EOS users on one machine (DevAuthTool, like UE)
+
+The EOS SDK's DevAuthTool works the same way as with UE:
+- Run it from the EOS SDK `Tools` folder (Windows and macOS builds ship with the SDK) and give it a port.
+- Log in one Epic account per credential name.
+
+Clients then use `--devauth=localhost:<port> --devcred=<name>` (launchers: `-DevAuth` /
+`--devauth`, credential names `<prefix><i>`, default `Player0`, `Player1`, ...). The client then:
+- logs in through EOS Auth (Developer credential) and EOS Connect via EOSG's `HAuth`;
+- gets a distinct Product User ID per account.
+
+Needs Epic Account Services enabled for the product in the Dev Portal. Implemented 2026-10-07,
+not yet run [Unverified].
 Exports exclude `*.local.json`. An exported build reads `eos_credentials.local.json` from next to
 its executable.

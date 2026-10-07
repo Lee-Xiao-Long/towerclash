@@ -39,13 +39,13 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
 
-[gui]
-
-theme/custom_font="res://assets/fonts/LilitaOne-Regular.ttf"
-
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg")
+
+[gui]
+
+theme/custom_font="res://assets/fonts/LilitaOne-Regular.ttf"
 
 [rendering]
 

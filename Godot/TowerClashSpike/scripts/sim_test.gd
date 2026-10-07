@@ -11,16 +11,18 @@ func _ready() -> void:
 	var wins := [0, 0, 0]
 	var rounds_total := 0
 	var reasons := {}
+	var end_rounds := {}
 	for m in n:
 		var res := run_one(seed0 + m)
 		wins[int(res.winner) + 1] += 1
 		rounds_total += int(res.round)
 		reasons[res.reason] = reasons.get(res.reason, 0) + 1
+		end_rounds[str(res.round)] = end_rounds.get(str(res.round), 0) + 1
 		if Net.args.has("verbose"):
 			print("SIMTEST_MATCH " + JSON.stringify(res))
 	var out := {
 		"matches": n, "draws": wins[0], "p0_wins": wins[1], "p1_wins": wins[2],
-		"avg_rounds": float(rounds_total) / n, "reasons": reasons,
+		"avg_rounds": float(rounds_total) / n, "reasons": reasons, "end_rounds": end_rounds,
 		"ms_per_match": float(Time.get_ticks_msec() - t0) / n,
 	}
 	print("SIMTEST " + JSON.stringify(out))

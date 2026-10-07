@@ -87,12 +87,16 @@ func init_platform(as_server: bool) -> bool:
 ## Device-ID Connect login. Returns true when a Product User ID is available.
 ## Note: every process on one OS account shares the device ID, so two local clients log in as
 ## the same EOS user. Fine for search-only matchmaking; real accounts come later.
+## --devauth=host:port --devcred=<name> logs in through the EOS SDK DevAuthTool instead (Epic
+## account per credential name, like UE's DevAuthTool flow), so local clients get distinct users.
 func login(display_name: String) -> bool:
 	if puid != "":
 		return true
 	if not platform_ready and not init_platform(false):
 		return false
 	status.emit("Signing in...")
+	if Net.args.has("devauth"):
+		return await _login_devauth(str(Net.args.devauth), str(Net.args.get("devcred", "")))
 	var dopt := EOS.Connect.CreateDeviceIdOptions.new()
 	dopt.device_model = "%s %s" % [OS.get_name(), OS.get_model_name()]
 	EOS.Connect.ConnectInterface.create_device_id(dopt)
@@ -122,6 +126,19 @@ func login(display_name: String) -> bool:
 		return _fail("no product user id")
 	puid = id
 	Net.log_line("EOS signed in (puid %s...)" % puid.substr(0, 8))
+	return true
+
+
+## Auth (Developer credential via DevAuthTool) -> Connect with the Epic ID token, done by EOSG's
+## HAuth helper. Needs Epic Account Services enabled for the product in the Dev Portal.
+func _login_devauth(host: String, cred: String) -> bool:
+	if cred == "":
+		return _fail("--devauth needs --devcred=<credential name from DevAuthTool>")
+	var ok: bool = await HAuth.login_devtool_async(host, cred)
+	if not ok or HAuth.product_user_id == "":
+		return _fail("devauth login failed (is DevAuthTool running on %s with credential '%s'?)" % [host, cred])
+	puid = HAuth.product_user_id
+	Net.log_line("EOS signed in via DevAuthTool '%s' (puid %s...)" % [cred, puid.substr(0, 8)])
 	return true
 
 
