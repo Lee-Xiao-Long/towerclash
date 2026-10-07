@@ -6,7 +6,22 @@
 
 ---
 
-## Current State / Next Action (updated 2026-10-03)
+## Current State / Next Action (updated 2026-10-07)
+
+- **2026-10-07 (Claude Code, overnight):** the user redirected the work to restyling the
+  Godot spike after Rush Royale (refs in `refs/images/`). This is a temporary baseline to hone
+  mechanics, HUD, sounds, shake and impact before TowerClash gets its own art direction.
+  - Done and committed in local steps (see `git log`):
+    - arena, units/enemies, FX, SFX, HUD, card upgrades;
+    - mesh baking;
+    - menus;
+    - docs.
+  - Details: `Docs/Art_Baseline.md`. Summary: `Godot_Spike.md` "Rush Royale Baseline Restyle".
+  - Later idea from the user: move hot paths to Rust (godot-rust GDExtension) once the game is
+    further along. Not started.
+  - Doc step 3 (UE doc drift) is still open. When it is done, also record in UE
+    `Mirrored_View_Architecture.md` that the Godot spike now mirrors the opponent board instead
+    of rotating it.
 
 - Steps 1 and 2 are done; all repos are committed and pushed.
   - Step 1: Houdini sprite generator.

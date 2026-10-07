@@ -50,6 +50,8 @@ var _bot_pending := false
 var _bot_rng := RandomNumberGenerator.new()
 var _shots_at: Array = []
 var _shot_prefix := ""
+var _input_test := false
+var _input_drag: Dictionary = {}
 var _drag_src := -1
 var _drag_pos := Vector3.ZERO
 var _started := false
@@ -59,6 +61,8 @@ var _finished := false
 func _ready() -> void:
 	GameData.ensure_loaded()
 	_bot = force_bot or Net.args.has("bot")
+	# --input-test: the bot merges only through synthetic mouse drags (exercises the real input path).
+	_input_test = Net.args.has("input-test")
 	_bot_rng.seed = hash(Net.args.get("name", "bot")) + Time.get_ticks_usec()
 	_shot_prefix = Net.args.get("shot-prefix", "")
 	for s in String(Net.args.get("shots", "")).split(",", false):
@@ -270,6 +274,7 @@ func _process(delta: float) -> void:
 	_update_enemies()
 	_update_towers(delta)
 	_bot_tick(delta)
+	_input_drag_tick(delta)
 	_screenshot_tick()
 
 
@@ -513,6 +518,13 @@ func _bot_tick(delta: float) -> void:
 	_bot_cd = _bot_rng.randf_range(0.3, 1.2) / float(Net.args.get("bot-speed", "1"))
 	var me: Array = _latest.p[Net.my_index]
 	var towers: Array = _latest.tw[Net.my_index]
+	if _input_test:
+		if _input_drag.is_empty():
+			_start_input_drag(towers)
+		if int(me[0]) >= int(me[2]) and towers.size() < GameData.slot_count():
+			_bot_pending = true
+			Net.request_place.rpc_id(1)
+		return
 	# Merge pairs of the same type/level now and then, always when the board is nearly full.
 	if towers.size() >= 12 or _bot_rng.randf() < 0.15:
 		var by_key := {}
@@ -535,6 +547,48 @@ func _bot_tick(delta: float) -> void:
 		if lvl <= costs.size() and int(me[0]) >= int(costs[lvl - 1]):
 			_bot_pending = true
 			Net.request_upgrade.rpc_id(1, i)
+
+
+## Synthetic drag from one tower to a matching one, fed through Input like a real finger/mouse.
+func _start_input_drag(towers: Array) -> void:
+	var by_key := {}
+	for row in towers:
+		if int(row[2]) >= int(GameData.rules.max_tower_level):
+			continue
+		var k := "%d:%d" % [int(row[1]), int(row[2])]
+		if by_key.has(k):
+			var a := camera.unproject_position(_slot_world(Net.my_index, int(by_key[k])))
+			var b := camera.unproject_position(_slot_world(Net.my_index, int(row[0])))
+			_input_drag = {"a": a, "b": b, "t": 0.0}
+			_counts["input_drags"] = int(_counts.get("input_drags", 0)) + 1
+			_mouse(a, true)
+			return
+		by_key[k] = int(row[0])
+
+
+func _input_drag_tick(delta: float) -> void:
+	if _input_drag.is_empty():
+		return
+	_input_drag.t += delta
+	var k := clampf(_input_drag.t / 0.35, 0.0, 1.0)
+	var p: Vector2 = _input_drag.a.lerp(_input_drag.b, k)
+	var mm := InputEventMouseMotion.new()
+	mm.position = p
+	mm.global_position = p
+	mm.button_mask = MOUSE_BUTTON_MASK_LEFT
+	Input.parse_input_event(mm)
+	if k >= 1.0:
+		_mouse(p, false)
+		_input_drag = {}
+
+
+func _mouse(p: Vector2, pressed: bool) -> void:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = pressed
+	e.position = p
+	e.global_position = p
+	Input.parse_input_event(e)
 
 
 # ---------------------------------------------------------------- end / screenshots

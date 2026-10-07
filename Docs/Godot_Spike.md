@@ -112,6 +112,22 @@ app flow.
 
 ---
 
+## Rush Royale Baseline Restyle (2026-10-07)
+
+The client now copies the Rush Royale look and HUD as a temporary baseline for tuning feel.
+Full notes: `Art_Baseline.md`.
+- Procedural toon arena, cartoon units/enemies, FX, synthesised SFX, RR-layout HUD and menus.
+  All of it is client-only; the server is still pure data.
+- The opponent board is now **mirrored** across the river instead of rotated 180 deg (RR layout).
+- New mechanic: in-match card upgrade (GDD 3.2.4), with card levels in snapshots.
+  The +25 %/level bonus is a spike assumption.
+- Draw calls are kept down by `MeshBaker`: about 1,260 before, 537 max in a 7-round match after.
+- New test aids:
+  - `tools/check.ps1`: parse check.
+  - `run_match.ps1 -InputTest`: drag-to-merge via synthetic input.
+  - `--mute`: silences bot/test clients.
+  - `perf` in `CLIENT_RESULT`.
+
 ## Results
 
 ### Calibration (sprite importer)
@@ -285,7 +301,9 @@ cd Godot/TowerClashSpike
 # Or press Play (F5) in the Godot editor: with no args it starts the client app.
 # Then run a server separately: & $godot --headless --path . -- --server --eos
 
+./tools/check.ps1                                          # parse/import check, prints script errors only
 ./tools/run_match.ps1 -TimeScale 8                         # headless server + 2 bots
+./tools/run_match.ps1 -TimeScale 1.5 -Visual -InputTest    # client 0 merges via synthetic mouse drags
 ./tools/run_match.ps1 -TimeScale 1 -Visual -Shots "15,100" # windowed clients + screenshots
 ./tools/run_eos.ps1 -HoldSec 15                            # EOS server session + client search
 & $godot --headless --path . -- --simtest --matches=200    # offline balance batch

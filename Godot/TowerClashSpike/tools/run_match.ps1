@@ -15,7 +15,8 @@ param(
     [int]$TimeoutSec = 600,
     [string]$Godot = "D:\Godot\Godot_v4.7.2-stable_win64_console.exe",
     [string]$ServerExe = "",
-    [string]$ClientExe = ""
+    [string]$ClientExe = "",
+    [switch]$InputTest
 )
 $ErrorActionPreference = "Stop"
 $proj = Split-Path $PSScriptRoot -Parent
@@ -36,6 +37,8 @@ Start-Sleep -Milliseconds 1500
 $clients = @()
 foreach ($i in 0, 1) {
     $ua = @("--host=127.0.0.1", "--port=$Port", "--name=Bot$i", "--bot", "--bot-speed=$TimeScale", "--quit-on-end", "--mute")
+    # -InputTest: client 0 merges only through synthetic mouse drags (needs -Visual for real input).
+    if ($InputTest -and $i -eq 0) { $ua += "--input-test" }
     if ($Visual) {
         $ga = @("--position", "$(40 + $i * 580),40")
         if ($Shots -ne "") { $ua += @("--shots=$Shots", "--shot-prefix=$(Join-Path $dir "client$i")") }
