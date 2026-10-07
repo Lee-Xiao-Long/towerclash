@@ -74,11 +74,12 @@ static func set_pips(pips: Node3D, level: int) -> void:
 	pips.add_child(MeshBaker.instance("pips:%d" % n, _build_pips.bind(n)))
 
 
-static func _eyes(parent: Node3D, y: float, z: float, spread := 0.085, r := 0.05) -> void:
+static func _eyes(parent: Node3D, y: float, z: float, spread := 0.09, r := 0.064) -> void:
 	for s: float in [-1.0, 1.0]:
 		var w := Toon.sphere(parent, r, Vector3(s * spread, y, z), EYE_WHITE, 0.0, 10)
-		w.scale = Vector3(1, 1.15, 0.6)
-		Toon.sphere(parent, r * 0.55, Vector3(s * spread, y - r * 0.1, z - r * 0.45), EYE_DARK, 0.0, 8)
+		w.scale = Vector3(1, 1.2, 0.6)
+		Toon.sphere(parent, r * 0.62, Vector3(s * spread, y - r * 0.12, z - r * 0.42), EYE_DARK, 0.0, 8)
+		Toon.sphere(parent, r * 0.2, Vector3(s * spread + r * 0.22, y + r * 0.15, z - r * 0.62), EYE_WHITE, 0.0, 6)
 
 
 static func _chibi(body: Node3D, kind: String, c: Color, accent: Color) -> void:
@@ -86,7 +87,11 @@ static func _chibi(body: Node3D, kind: String, c: Color, accent: Color) -> void:
 	Toon.cyl(body, 0.15, 0.23, 0.34, Vector3(0, 0.17, 0), c, OUTLINE)
 	var head_y := 0.52
 	Toon.sphere(body, 0.2, Vector3(0, head_y, 0), SKIN, OUTLINE)
-	_eyes(body, head_y, -0.17)
+	_eyes(body, head_y + 0.01, -0.165)
+	# Rosy cheeks.
+	for s: float in [-1.0, 1.0]:
+		var ch := Toon.sphere(body, 0.035, Vector3(s * 0.13, head_y - 0.07, -0.15), Color("ff9d9d"), 0.0, 8)
+		ch.scale = Vector3(1.2, 0.7, 0.5)
 	match kind:
 		"archer":
 			# Pointed hood + bow.

@@ -35,7 +35,7 @@ $server = Start-Godot "server" @("--headless") @("--server", "--port=$Port", "--
 Start-Sleep -Milliseconds 1500
 $clients = @()
 foreach ($i in 0, 1) {
-    $ua = @("--host=127.0.0.1", "--port=$Port", "--name=Bot$i", "--bot", "--bot-speed=$TimeScale", "--quit-on-end")
+    $ua = @("--host=127.0.0.1", "--port=$Port", "--name=Bot$i", "--bot", "--bot-speed=$TimeScale", "--quit-on-end", "--mute")
     if ($Visual) {
         $ga = @("--position", "$(40 + $i * 580),40")
         if ($Shots -ne "") { $ua += @("--shots=$Shots", "--shot-prefix=$(Join-Path $dir "client$i")") }

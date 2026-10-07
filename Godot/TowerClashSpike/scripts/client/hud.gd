@@ -45,25 +45,6 @@ var _last_mana := -1
 var _last_hp := [-1, -1]
 
 
-class Avatar extends Control:
-	var letter := "?"
-	var ring := Color.WHITE
-	var fill := Color("ffcf8a")
-
-	func _draw() -> void:
-		var c := size * 0.5
-		var r := minf(size.x, size.y) * 0.5
-		draw_circle(c, r, UiKit.OUTLINE)
-		draw_circle(c, r - 3, ring)
-		draw_circle(c, r - 9, fill.darkened(0.25))
-		draw_circle(c - Vector2(0, 2), r - 11, fill)
-		var f := Toon.font()
-		var fs := int(r * 1.1)
-		var w := f.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string_outline(f, c + Vector2(-w * 0.5, fs * 0.36), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 8, UiKit.OUTLINE)
-		draw_string(f, c + Vector2(-w * 0.5, fs * 0.36), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
-
-
 func _ready() -> void:
 	_root = UiKit.full_rect(Control.new())
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -497,45 +478,17 @@ func show_result(res: Dictionary, me: int, with_return := false) -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0.04, 0.06, 0.16, 0.7)
 	_result.add_child(UiKit.full_rect(dim))
-	var v := UiKit.vbox(18)
-	v.set_anchors_preset(Control.PRESET_CENTER)
-	v.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	v.grow_vertical = Control.GROW_DIRECTION_BOTH
-	v.custom_minimum_size = Vector2(470, 0)
-	_result.add_child(v)
-
-	var ribbon := PanelContainer.new()
-	var rc := Color("3f8ff0") if won else (Color("d8443a") if w >= 0 else Color("e0a42a"))
-	var rs := UiKit.chunky(rc, rc.darkened(0.45), 10, false, 8)
-	rs.border_width_top = 4
-	rs.border_width_left = 4
-	rs.border_width_right = 4
-	rs.border_color = Color("ffe08a")
-	rs.content_margin_top = 10
-	rs.content_margin_bottom = 16
-	ribbon.add_theme_stylebox_override("panel", rs)
-	ribbon.add_child(UiKit.title(UiKit.result_word(w, me), 54))
-	v.add_child(ribbon)
-
-	var wood := UiKit.wood_panel()
-	var wv := UiKit.vbox(8)
-	wood.add_child(wv)
-	wv.add_child(UiKit.title(UiKit.reason_text(str(res.reason), won), 20, Color("ffe7b8")))
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 24)
 	var kills: Array = res.get("kills", [0, 0])
 	var hp: Array = res.get("base_hp", [0, 0])
 	var my_name := str(_names[m]) if str(_names[m]) != "" else "You"
-	for row in [["", my_name, _opp_display_name()], ["Hearts", hp[m], hp[o]], ["Kills", kills[m], kills[o]]]:
-		for i in 3:
-			var l := UiKit.title(str(row[i]), 22 if i > 0 else 18, Color.WHITE if i > 0 else Color("ffe7b8"))
-			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			l.clip_text = true
-			grid.add_child(l)
-	wv.add_child(grid)
-	wv.add_child(UiKit.title("Wave %d   -   %s" % [int(res.get("round", 0)), UiKit.mmss(float(res.get("time", 0.0)))], 18, Color("ffe7b8")))
-	v.add_child(wood)
+	var v := ResultCard.build(UiKit.result_word(w, me), ResultCard.ribbon_color(w, me),
+			UiKit.reason_text(str(res.reason), won),
+			[["", my_name, _opp_display_name()], ["Hearts", hp[m], hp[o]], ["Kills", kills[m], kills[o]]],
+			"Wave %d   -   %s" % [int(res.get("round", 0)), UiKit.mmss(float(res.get("time", 0.0)))])
+	v.set_anchors_preset(Control.PRESET_CENTER)
+	v.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	v.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_result.add_child(v)
 	if with_return:
 		var b := UiKit.colored_button("Continue", UiKit.BLUE_BTN, UiKit.BLUE_EDGE, 28, 64)
 		b.custom_minimum_size.x = 220
@@ -543,9 +496,5 @@ func show_result(res: Dictionary, me: int, with_return := false) -> void:
 		b.pressed.connect(func(): return_pressed.emit())
 		v.add_child(b)
 	_result.modulate.a = 0.0
-	var t := create_tween()
-	t.tween_property(_result, "modulate:a", 1.0, 0.25)
-	await get_tree().process_frame
-	ribbon.pivot_offset = ribbon.size * 0.5
-	ribbon.scale = Vector2(0.3, 0.3)
-	create_tween().tween_property(ribbon, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	create_tween().tween_property(_result, "modulate:a", 1.0, 0.25)
+	ResultCard.animate_in(v)

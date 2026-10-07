@@ -55,6 +55,56 @@ func _draw() -> void:
 			draw_rect(r, Color("3f8ff0"))
 			draw_rect(r.grow(-s * 0.1), Color("6fb0ff"))
 			draw_circle(r.get_center(), s * 0.13, Color("1f3f8f"))
+		"trophy":
+			var gold := Color("ffc83a")
+			draw_rect(Rect2(o + Vector2(s * 0.3, s * 0.78), Vector2(s * 0.4, s * 0.14)).grow(s * 0.04), ol)
+			draw_rect(Rect2(o + Vector2(s * 0.3, s * 0.78), Vector2(s * 0.4, s * 0.14)), Color("b0702a"))
+			draw_rect(Rect2(o + Vector2(s * 0.44, s * 0.55), Vector2(s * 0.12, s * 0.25)), gold.darkened(0.2))
+			for sx in [-1.0, 1.0]:
+				draw_arc(o + Vector2(s * (0.5 + 0.26 * sx), s * 0.32), s * 0.12, 0, TAU, 16, ol, s * 0.08)
+				draw_arc(o + Vector2(s * (0.5 + 0.26 * sx), s * 0.32), s * 0.12, 0, TAU, 16, gold, s * 0.04)
+			draw_circle(o + Vector2(s * 0.5, s * 0.3), s * 0.3, ol)
+			draw_colored_polygon(PackedVector2Array([o + Vector2(s * 0.24, s * 0.12), o + Vector2(s * 0.76, s * 0.12),
+				o + Vector2(s * 0.68, s * 0.5), o + Vector2(s * 0.32, s * 0.5)]), gold)
+			draw_circle(o + Vector2(s * 0.5, s * 0.42), s * 0.17, gold)
+			draw_circle(o + Vector2(s * 0.42, s * 0.25), s * 0.05, Color(1, 1, 1, 0.7))
+		"shield":
+			var pts := PackedVector2Array([o + Vector2(s * 0.12, s * 0.12), o + Vector2(s * 0.88, s * 0.12),
+				o + Vector2(s * 0.84, s * 0.55), o + Vector2(s * 0.5, s * 0.94), o + Vector2(s * 0.16, s * 0.55)])
+			draw_colored_polygon(pts, ol)
+			var inner := PackedVector2Array()
+			for p in pts:
+				inner.append(p.lerp(o + Vector2(s * 0.5, s * 0.48), 0.14))
+			draw_colored_polygon(inner, color)
+			draw_line(o + Vector2(s * 0.5, s * 0.2), o + Vector2(s * 0.5, s * 0.82), Color(1, 1, 1, 0.35), s * 0.08)
+		"lock":
+			draw_arc(o + Vector2(s * 0.5, s * 0.42), s * 0.2, PI, TAU, 16, ol, s * 0.16)
+			draw_arc(o + Vector2(s * 0.5, s * 0.42), s * 0.2, PI, TAU, 16, Color("c9d2e3"), s * 0.08)
+			draw_rect(Rect2(o + Vector2(s * 0.2, s * 0.42), Vector2(s * 0.6, s * 0.48)).grow(s * 0.04), ol)
+			draw_rect(Rect2(o + Vector2(s * 0.2, s * 0.42), Vector2(s * 0.6, s * 0.48)), Color("ffc83a"))
+			draw_circle(o + Vector2(s * 0.5, s * 0.62), s * 0.07, ol)
+		"gear":
+			var c := o + Vector2(s * 0.5, s * 0.5)
+			for i in 8:
+				var a := TAU * i / 8.0
+				draw_line(c, c + Vector2(cos(a), sin(a)) * s * 0.44, ol, s * 0.2)
+			draw_circle(c, s * 0.34, ol)
+			for i in 8:
+				var a := TAU * i / 8.0
+				draw_line(c, c + Vector2(cos(a), sin(a)) * s * 0.4, color, s * 0.12)
+			draw_circle(c, s * 0.29, color)
+			draw_circle(c, s * 0.12, ol)
+		"person":
+			draw_circle(o + Vector2(s * 0.5, s * 0.34), s * 0.2, ol)
+			draw_circle(o + Vector2(s * 0.5, s * 0.34), s * 0.15, color)
+			draw_circle(o + Vector2(s * 0.5, s * 0.92), s * 0.36, ol)
+			draw_circle(o + Vector2(s * 0.5, s * 0.92), s * 0.31, color)
+		"chest":
+			draw_rect(Rect2(o + Vector2(s * 0.12, s * 0.38), Vector2(s * 0.76, s * 0.48)).grow(s * 0.04), ol)
+			draw_rect(Rect2(o + Vector2(s * 0.12, s * 0.38), Vector2(s * 0.76, s * 0.48)), Color("b06a32"))
+			draw_rect(Rect2(o + Vector2(s * 0.12, s * 0.2), Vector2(s * 0.76, s * 0.2)).grow(s * 0.04), ol)
+			draw_rect(Rect2(o + Vector2(s * 0.12, s * 0.2), Vector2(s * 0.76, s * 0.2)), Color("c97d3c"))
+			draw_rect(Rect2(o + Vector2(s * 0.42, s * 0.34), Vector2(s * 0.16, s * 0.18)), Color("ffc83a"))
 		"swords":
 			for sx in [-1.0, 1.0]:
 				var a := o + Vector2(s * (0.5 - 0.32 * sx), s * 0.85)

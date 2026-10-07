@@ -39,6 +39,8 @@ func _ready() -> void:
 		profile.data.name = a.name
 		profile.save()
 	bot = a.has("bot") or bool(profile.setting("autoplay"))
+	if not a.has("mute"):
+		Sfx.set_enabled(bool(profile.setting("sound")))
 	_loops = int(a.get("loops", "0"))
 	_shots_dir = str(a.get("app-shots", ""))
 	if _shots_dir != "":
@@ -135,16 +137,16 @@ func _boot() -> void:
 	_show_home({}, false)
 	await _fade(false)
 	if _shots_dir != "":
-		for i in 4:
+		for i in HomeScreen.PAGES.size():
 			_home.show_page(i, false)
-			await _shot("%02d_home_page%d" % [3 + i, i])
-		_home.show_page(0, false)
+			await _shot("%02d_home_page%d" % [3 + i, i], 0.15)
+		_home.show_page(HomeScreen.BATTLE, false)
 
 
 func _show_home(entry: Dictionary, with_summary: bool) -> void:
 	_home.connection_note = _connection_note()
 	_home.refresh()
-	_home.show_page(0, false)
+	_home.show_page(HomeScreen.BATTLE, false)
 	_home.visible = true
 	if with_summary:
 		_home.show_summary(entry, 3.0 if bot else 0.0)
@@ -178,9 +180,9 @@ func _play() -> void:
 		return
 	_search_id += 1
 	var me := _search_id
-	_mm.open()
+	_mm.open(str(profile.data.name))
 	_home.visible = false
-	_shot("07_matchmaking", 0.5)
+	_shot("08_matchmaking", 0.5)
 	Net.log_line("APP quick match (%s)" % _mode())
 	var deadline := Time.get_ticks_msec() + int(SEARCH_TIMEOUT_S * 1000)
 	if _mode() == "online":
@@ -257,21 +259,22 @@ func _start_arena() -> void:
 
 func _on_match_info(names: Array) -> void:
 	if _mm.visible and _my_index >= 0:
-		_mm.set_status("Opponent found!", "vs %s" % names[1 - _my_index])
+		_mm.set_status("Opponent found!", "")
+		_mm.set_players(str(profile.data.name), str(names[1 - _my_index]))
 
 
 func _on_match_started() -> void:
 	_mm.lock_cancel()
-	_shot("08_opponent_found")
+	_shot("09_opponent_found")
 	await get_tree().create_timer(0.6).timeout
 	if _mm.visible:
 		_mm.fade_out()
-	_shot("09_match", 6.0)
+	_shot("10_match", 6.0)
 
 
 func _on_arena_finished(res: Dictionary) -> void:
 	var me := _my_index
-	await _shot("10_result")
+	await _shot("11_result")
 	await _fade(true)
 	Net.leave()
 	if _arena != null:
@@ -286,7 +289,7 @@ func _on_arena_finished(res: Dictionary) -> void:
 	_search_id += 1
 	_show_home(entry, true)
 	await _fade(false)
-	_shot("11_summary", 0.3)
+	_shot("12_summary", 0.3)
 
 
 func _cancel() -> void:

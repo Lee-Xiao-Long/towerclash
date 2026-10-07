@@ -2,7 +2,8 @@ extends Node
 ## Autoload "Sfx". Placeholder sound effects synthesised at startup (no audio assets yet):
 ## clicks, summon, merge, per-tower shots, hits, kills, coins, base hit, wave horn, stingers.
 ## Sfx.play(name) is throttled per sound so rapid towers do not stack into noise.
-## Headless processes (dedicated server, bot test clients) build nothing and play nothing.
+## Headless processes (dedicated server, bot test clients) build nothing and play nothing;
+## --mute (test launchers pass it to bot clients) keeps a windowed client silent.
 
 const RATE := 22050
 const VOICES := 14
@@ -31,6 +32,13 @@ func _ready() -> void:
 		add_child(p)
 		_players.append(p)
 	_build()
+	if Net.args.has("mute"):
+		enabled = false
+
+
+## User setting (Settings > Sound effects). Headless processes stay silent regardless.
+func set_enabled(on: bool) -> void:
+	enabled = on and not _players.is_empty()
 
 
 func play(sound: String, pitch_jitter := 0.06, gain_db := 0.0) -> void:

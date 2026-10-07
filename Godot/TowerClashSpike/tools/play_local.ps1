@@ -98,7 +98,7 @@ for ($i = 0; $i -lt $Clients; $i++) {
     $isBot = $i -ge ($Clients - $Bots)
     $name = $(if ($isBot) { "Bot$i" } else { "Player$i" })
     $ua = @("--profile=$ProfilePrefix$i", "--name=$name")
-    if ($isBot) { $ua += @("--bot", "--bot-speed=$TimeScale"); if ($Loops -gt 0) { $ua += "--loops=$Loops" } }
+    if ($isBot) { $ua += @("--bot", "--bot-speed=$TimeScale", "--mute"); if ($Loops -gt 0) { $ua += "--loops=$Loops" } }
     if ($useEos) { $ua += "--online" } else { $ua += "--local=127.0.0.1:$Port" }
     if ($Shots -and $i -eq 0) { $ua += "--app-shots=$(Join-Path $dir 'shots')" }
     $ga = @("--position", "$(40 + $i * 580),40")

@@ -23,7 +23,7 @@ func _defaults() -> Dictionary:
 		"deck": GameData.rules.default_deck.duplicate(),
 		"matches": 0, "wins": 0, "losses": 0, "draws": 0, "kills": 0, "best_round": 0,
 		"history": [],
-		"settings": {"connection": "online", "local_address": "127.0.0.1:%d" % Net.DEFAULT_PORT, "autoplay": false},
+		"settings": {"connection": "online", "local_address": "127.0.0.1:%d" % Net.DEFAULT_PORT, "autoplay": false, "sound": true},
 	}
 
 

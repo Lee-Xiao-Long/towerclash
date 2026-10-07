@@ -9,21 +9,23 @@ const SIZE := 160
 static var _cache: Dictionary = {}
 
 
-static func icon(type: String) -> Texture2D:
-	if _cache.has(type):
-		return _cache[type]
-	var img := Image.create(SIZE, SIZE, false, Image.FORMAT_RGBA8)
+## frame = ortho camera height in metres (bigger = more headroom around the figure).
+static func icon(type: String, px := SIZE, frame := 1.25) -> Texture2D:
+	var key := "%s@%d@%.2f" % [type, px, frame]
+	if _cache.has(key):
+		return _cache[key]
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
 	var tex := ImageTexture.create_from_image(img)
-	_cache[type] = tex
+	_cache[key] = tex
 	if DisplayServer.get_name() != "headless" and GameData.towers.has(type):
-		_render(type, tex)
+		_render(type, tex, px, frame)
 	return tex
 
 
-static func _render(type: String, tex: ImageTexture) -> void:
+static func _render(type: String, tex: ImageTexture, px: int, frame: float) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	var vp := SubViewport.new()
-	vp.size = Vector2i(SIZE, SIZE)
+	vp.size = Vector2i(px, px)
 	vp.transparent_bg = true
 	vp.own_world_3d = true
 	vp.msaa_3d = Viewport.MSAA_4X
@@ -36,25 +38,26 @@ static func _render(type: String, tex: ImageTexture) -> void:
 	e.background_mode = Environment.BG_CLEAR_COLOR
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.9, 0.92, 1.0)
-	e.ambient_light_energy = 0.8
+	e.ambient_light_energy = 0.5
 	e.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	env.environment = e
 	world.add_child(env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, 35, 0)
-	sun.light_energy = 0.9
+	sun.light_energy = 0.75
 	world.add_child(sun)
 	var f := Figures.tower(type, 1)
 	world.add_child(f.root)
 	f.pad.visible = false
 	f.ring.visible = false
 	f.pips.visible = false
-	f.body.rotation.y = deg_to_rad(-20)
+	# Figures face local -Z; turn them toward the camera (+Z) with a slight three-quarter view.
+	f.body.rotation.y = PI - deg_to_rad(20)
 	var cam := Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	cam.size = 1.25
+	cam.size = frame
 	cam.rotation_degrees = Vector3(-18, 0, 0)
-	cam.position = Vector3(0, 0.62, 0) + cam.basis.z * 5.0
+	cam.position = Vector3(0, 0.55 + frame * 0.06, 0) + cam.basis.z * 5.0
 	world.add_child(cam)
 	await tree.process_frame
 	await tree.process_frame
