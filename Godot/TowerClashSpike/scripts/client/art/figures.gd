@@ -23,25 +23,46 @@ static func look_color(def: Dictionary, key := "color", fallback := Color.WHITE)
 # ---------------------------------------------------------------- units
 
 ## Returns {root, pad, ring, body, pips}. root stays unrotated; rotate body toward the target.
+## Static parts are merged per type by MeshBaker (a unit is ~4 draw calls, not ~20).
 static func tower(type: String, level: int) -> Dictionary:
 	var def: Dictionary = GameData.towers[type]
 	var look: Dictionary = def.get("look", {})
 	var c := look_color(def)
 	var root := Node3D.new()
-	var pad := Toon.cyl(root, 0.5, 0.52, 0.05, Vector3(0, 0.095, 0), c.darkened(0.15).lerp(Color.WHITE, 0.15), 0.0, 32)
-	pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var ring := Toon.torus(root, 0.44, 0.53, Vector3(0, 0.125, 0), c.lightened(0.35), 0.35)
+	var pad := MeshBaker.instance("pad:" + type, _build_pad.bind(c))
+	root.add_child(pad)
 	var body := Node3D.new()
 	body.position = Vector3(0, 0.12, 0)
 	root.add_child(body)
-	var model := Node3D.new()
-	model.scale = Vector3.ONE * UNIT_SCALE
-	body.add_child(model)
-	_chibi(model, str(look.get("kind", "archer")), c, Color.html(look.get("accent", "#ffffff")))
+	body.add_child(MeshBaker.instance("unit:" + type, _build_unit.bind(str(look.get("kind", "archer")), c,
+			Color.html(look.get("accent", "#ffffff")))))
 	var pips := Node3D.new()
 	root.add_child(pips)
 	set_pips(pips, level)
-	return {"root": root, "pad": pad, "ring": ring, "body": body, "pips": pips}
+	return {"root": root, "pad": pad, "ring": pad.get_node("Ring"), "body": body, "pips": pips}
+
+
+static func _build_pad(p: Node3D, c: Color) -> void:
+	var disc := Toon.cyl(p, 0.5, 0.52, 0.05, Vector3(0, 0.095, 0), c.darkened(0.15).lerp(Color.WHITE, 0.15), 0.0, 32)
+	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var ring := Toon.torus(p, 0.44, 0.53, Vector3(0, 0.125, 0), c.lightened(0.35), 0.35)
+	ring.name = "Ring"
+
+
+static func _build_unit(p: Node3D, kind: String, c: Color, accent: Color) -> void:
+	var model := Node3D.new()
+	model.scale = Vector3.ONE * UNIT_SCALE
+	p.add_child(model)
+	_chibi(model, kind, c, accent)
+
+
+static func _build_pips(holder: Node3D, n: int) -> void:
+	var spread := 0.16
+	for i in n:
+		var x := (i - (n - 1) * 0.5) * spread
+		var a := x / 0.5
+		var p := Toon.sphere(holder, 0.055, Vector3(x, 0.15, 0.46 * cos(a)), PIP, 0.01, 10)
+		p.scale = Vector3(1, 0.7, 1)
 
 
 ## Merge rank as gold studs along the pad's camera-side edge (always +z, so they stay visible on
@@ -50,12 +71,7 @@ static func set_pips(pips: Node3D, level: int) -> void:
 	for ch in pips.get_children():
 		ch.queue_free()
 	var n := maxi(level, 1)
-	var spread := 0.16
-	for i in n:
-		var x := (i - (n - 1) * 0.5) * spread
-		var a := x / 0.5
-		var p := Toon.sphere(pips, 0.055, Vector3(x, 0.15, 0.46 * cos(a)), PIP, 0.01, 10)
-		p.scale = Vector3(1, 0.7, 1)
+	pips.add_child(MeshBaker.instance("pips:%d" % n, _build_pips.bind(n)))
 
 
 static func _eyes(parent: Node3D, y: float, z: float, spread := 0.085, r := 0.05) -> void:
@@ -118,26 +134,46 @@ static func _orb(r: float) -> SphereMesh:
 
 # ---------------------------------------------------------------- enemies
 
-## Returns {root, body, scale, hp_label}. body bobs while walking; root is placed at the foot.
+## Returns {root, body, blob, scale, hp_label, recycled, slowed}. body bobs while walking; root
+## is placed at the foot. blob is the merged body mesh (hit-flash overlay goes on it).
 static func creature(type: String) -> Dictionary:
 	var def: Dictionary = GameData.enemies[type]
 	var look: Dictionary = def.get("look", {})
 	var c := look_color(def, "color", Color("e05a5a"))
 	var s := float(look.get("scale", 1.0)) * CREATURE_SCALE
 	var root := Node3D.new()
+	# Feet stay on the ground; the body bobs above them.
+	root.add_child(MeshBaker.instance("feet:" + type, _build_feet.bind(c, s)))
 	var body := Node3D.new()
 	root.add_child(body)
 	body.scale = Vector3.ONE * s
-	var r := 0.2
-	# Feet (they stay on the ground; the body bobs above them).
+	var inner := MeshBaker.instance("creature:" + type, _build_creature.bind(c, s, str(look.get("extra", ""))))
+	body.add_child(inner)
+	var blob := inner.get_node_or_null("Baked") as MeshInstance3D
+	var hp := Toon.label3d("", 46)
+	hp.pixel_size = 0.0055
+	root.add_child(hp)
+	# Status auras (toggled by the view): purple = recycled from the opponent, cyan = slowed.
+	var recycled := Toon.torus(root, 0.2 * s, 0.27 * s, Vector3(0, 0.03, 0), Color("b05cff"), 2.0)
+	recycled.visible = false
+	var slowed := Toon.torus(root, 0.24 * s, 0.3 * s, Vector3(0, 0.05, 0), Color("8ff0ff"), 1.6)
+	slowed.visible = false
+	return {"root": root, "body": body, "blob": blob, "scale": s, "hp_label": hp, "recycled": recycled, "slowed": slowed}
+
+
+static func _build_feet(p: Node3D, c: Color, s: float) -> void:
 	for sx: float in [-1.0, 1.0]:
-		var f := Toon.sphere(root, 0.06 * s, Vector3(sx * 0.09 * s, 0.04 * s, 0), c.darkened(0.45), 0.0, 8)
+		var f := Toon.sphere(p, 0.06 * s, Vector3(sx * 0.09 * s, 0.04 * s, 0), c.darkened(0.45), 0.0, 8)
 		f.scale = Vector3(1, 0.6, 1.3)
+
+
+static func _build_creature(body: Node3D, c: Color, s: float, extra: String) -> void:
+	var r := 0.2
 	var blob := Toon.sphere(body, r, Vector3(0, 0.24, 0), c, OUTLINE / s, 16)
 	blob.scale = Vector3(1.05, 0.92, 1.0)
 	Toon.sphere(body, r * 0.65, Vector3(0, 0.19, -0.08), c.lightened(0.3), 0.0, 12).scale = Vector3(1, 0.8, 0.6)
 	_eyes(body, 0.3, -0.16, 0.075, 0.055)
-	match str(look.get("extra", "")):
+	match extra:
 		"ears":
 			for sx: float in [-1.0, 1.0]:
 				var e := Toon.cyl(body, 0.0, 0.06, 0.18, Vector3(sx * 0.15, 0.44, 0), c, OUTLINE / s, 8)
@@ -163,12 +199,3 @@ static func creature(type: String) -> Dictionary:
 		"antenna":
 			Toon.cyl(body, 0.01, 0.01, 0.14, Vector3(0, 0.48, 0), c.darkened(0.4), 0.0, 6)
 			Toon.sphere(body, 0.035, Vector3(0, 0.56, 0), Color("ff7ad9"), 0.0, 8)
-	var hp := Toon.label3d("", 46)
-	hp.pixel_size = 0.0055
-	root.add_child(hp)
-	# Status auras (toggled by the view): purple = recycled from the opponent, cyan = slowed.
-	var recycled := Toon.torus(root, 0.2 * s, 0.27 * s, Vector3(0, 0.03, 0), Color("b05cff"), 2.0)
-	recycled.visible = false
-	var slowed := Toon.torus(root, 0.24 * s, 0.3 * s, Vector3(0, 0.05, 0), Color("8ff0ff"), 1.6)
-	slowed.visible = false
-	return {"root": root, "body": body, "blob": blob, "scale": s, "hp_label": hp, "recycled": recycled, "slowed": slowed}

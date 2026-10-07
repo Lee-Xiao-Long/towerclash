@@ -40,6 +40,9 @@ var _joined_at := -1.0
 var _result: Dictionary = {}
 var _counts := {"snapshots": 0, "shots": 0, "kills": 0, "base_hits": 0, "max_enemies": 0, "place_ok": 0, "place_fail": 0, "merge_ok": 0, "merge_fail": 0}
 var _last_wave := -1
+var _flash_mat := Toon.unlit(Color(1, 1, 1, 0.65), true)
+var _perf := {"max_draw_calls": 0, "max_objects": 0, "min_fps": 1000, "samples": 0, "fps_sum": 0.0}
+var _perf_t := 0.0
 
 var _bot := false
 var _bot_cd := 0.0
@@ -263,10 +266,29 @@ func _enemy_type(i: int) -> String:
 
 func _process(delta: float) -> void:
 	_now += delta
+	_sample_perf(delta)
 	_update_enemies()
 	_update_towers(delta)
 	_bot_tick(delta)
 	_screenshot_tick()
+
+
+## Render cost sampled once a second during the match (reported in CLIENT_RESULT) so the
+## procedural placeholder art can be judged against the mobile budget.
+func _sample_perf(delta: float) -> void:
+	_perf_t += delta
+	if _perf_t < 1.0 or not _started or not _result.is_empty():
+		return
+	_perf_t = 0.0
+	var dc := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+	var obj := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
+	var fps := Engine.get_frames_per_second()
+	_perf.max_draw_calls = maxi(_perf.max_draw_calls, dc)
+	_perf.max_objects = maxi(_perf.max_objects, obj)
+	if _perf.samples > 2:
+		_perf.min_fps = mini(_perf.min_fps, int(fps))
+	_perf.samples += 1
+	_perf.fps_sum += fps
 
 
 func _update_towers(delta: float) -> void:
@@ -356,6 +378,12 @@ func _place_enemy(id: int, row: Array, dist: float) -> void:
 		create_tween().tween_property(n.root, "scale", Vector3.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		if dist < 30.0:
 			art.pulse_portal(_is_mine(board))
+		if n.scale >= 2.0:
+			# Boss entrance: big pop, shake, rumble.
+			n.root.scale = Vector3.ONE * 0.05
+			fx.shake(0.15, 0.5)
+			fx.ring(n.root.position, Color("c77dff"), 1.6, 0.5, 2.0)
+			Sfx.play("boss", 0.0, 0.0 if _is_mine(board) else -8.0)
 	var mine := _is_mine(board)
 	var foot := ArenaArt.board_world(mine, BoardLayout.path_point(dist))
 	var ahead := ArenaArt.board_world(mine, BoardLayout.path_point(dist + 5.0))
@@ -374,6 +402,7 @@ func _place_enemy(id: int, row: Array, dist: float) -> void:
 	var frac := float(row[4])
 	if frac < n.last_frac - 0.001:
 		n.flash = 1.0
+	n.blob.material_overlay = _flash_mat if n.flash > 0.45 else null
 	n.last_frac = frac
 	n.hp_label.text = str(maxi(1, int(ceil(frac * n.max_hp))))
 	var flags := int(row[5])
@@ -520,6 +549,8 @@ func _on_match_ended(res: Dictionary) -> void:
 		"index": Net.my_index, "winner": res.winner, "reason": res.reason,
 		"server_base_hp": res.base_hp, "server_gold": res.gold,
 		"last_snapshot_me": mine, "counts": _counts,
+		"perf": {"max_draw_calls": _perf.max_draw_calls, "max_objects": _perf.max_objects,
+			"min_fps": _perf.min_fps, "avg_fps": snappedf(_perf.fps_sum / maxf(1.0, _perf.samples), 0.1)},
 	}
 	Net.log_line("CLIENT_RESULT " + JSON.stringify(report))
 	if _shot_prefix != "":

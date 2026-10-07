@@ -60,6 +60,10 @@ func build() -> void:
 	for mine: bool in [true, false]:
 		_board(mine)
 	_scenery()
+	# ~400 primitives -> a handful of merged surfaces. Castles bake on their own (they shake).
+	for c in castles:
+		MeshBaker.bake_in_place(c)
+	MeshBaker.bake_in_place(self)
 
 
 func _environment() -> void:
@@ -100,7 +104,7 @@ func _ground() -> void:
 	Toon.box(self, Vector3(40, 0.1, 50), Vector3(0, -0.06, 0), GRASS, false)
 	# Lighter grass mats under each board area.
 	for s: float in [1.0, -1.0]:
-		Toon.box(self, Vector3(11.4, 0.02, 8.6), Vector3(0, -0.005, s * (BOARD_OFFSET_M + 0.1)), Color("67b745"), false)
+		Toon.box(self, Vector3(11.4, 0.02, 8.0), Vector3(0, -0.005, s * (BOARD_OFFSET_M + 0.15)), Color("67b745"), false)
 
 
 func _river() -> void:
@@ -109,11 +113,11 @@ func _river() -> void:
 	pm.size = Vector2(40, RIVER_HALF_M * 2.0)
 	water.mesh = pm
 	water.material_override = Toon.shader_mat("res://assets/shaders/water.gdshader", {"bank_z": RIVER_HALF_M})
-	water.position = Vector3(0, -0.04, 0)
+	water.position = Vector3(0, 0.004, 0)
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(water)
 	for s: float in [1.0, -1.0]:
-		Toon.box(self, Vector3(40, 0.12, 0.16), Vector3(0, -0.02, s * (RIVER_HALF_M + 0.06)), BANK, false)
+		Toon.box(self, Vector3(40, 0.06, 0.14), Vector3(0, 0.0, s * (RIVER_HALF_M + 0.05)), BANK, false)
 	# A few stepping stones and a rubber duck, because the reference has one.
 	for p in [Vector3(-3.6, 0, 0.25), Vector3(3.9, 0, -0.2), Vector3(4.3, 0, 0.3)]:
 		var st := Toon.sphere(self, 0.13, p, Color("9aa3a8"))
@@ -230,6 +234,7 @@ func _portal(mine: bool, p: Vector3) -> void:
 func _castle(mine: bool, p: Vector3, team: Color) -> void:
 	var root := Node3D.new()
 	root.position = p
+	root.set_meta("no_bake", true)
 	add_child(root)
 	Toon.box(root, Vector3(1.3, 0.75, 0.8), Vector3(0, 0.375, 0), CASTLE)
 	Toon.box(root, Vector3(1.4, 0.08, 0.9), Vector3(0, 0.77, 0), CASTLE_DARK)
