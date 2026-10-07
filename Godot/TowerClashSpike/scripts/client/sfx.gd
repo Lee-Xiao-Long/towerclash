@@ -41,6 +41,12 @@ func set_enabled(on: bool) -> void:
 	enabled = on and not _players.is_empty()
 
 
+## Short phone vibration (no-op on desktop). Respects the sound setting as the "feedback" switch.
+func buzz(ms := 30) -> void:
+	if enabled and OS.has_feature("mobile"):
+		Input.vibrate_handheld(ms)
+
+
 func play(sound: String, pitch_jitter := 0.06, gain_db := 0.0) -> void:
 	if not enabled or not _streams.has(sound):
 		return
@@ -81,6 +87,9 @@ func _build() -> void:
 	_streams.upgrade = _wav(_seq([[0.0, _tone(0.1, 523, 1046, "sine", 0.003, 0.09, 0.35)], [0.08, _tone(0.25, 1046, 1568, "sine", 0.003, 0.22, 0.35)]]))
 	_streams.whoosh = _wav(_noise(0.35, 0.12, 0.2, 0.15, 0.2))
 	_streams.portal = _wav(_tone(0.3, 200, 420, "sine", 0.05, 0.25, 0.18))
+	_streams.tick = _wav(_tone(0.05, 1760, 1760, "square", 0.001, 0.045, 0.1))
+	_streams.bonus = _wav(_seq([[0.0, _tone(0.08, 1047, 1047, "square", 0.002, 0.07, 0.12)], [0.07, _tone(0.08, 1319, 1319, "square", 0.002, 0.07, 0.12)],
+			[0.14, _tone(0.08, 1568, 1568, "square", 0.002, 0.07, 0.12)], [0.21, _tone(0.25, 2093, 2093, "square", 0.002, 0.23, 0.12)]]))
 
 
 ## Mono float samples. shape: sine | square | saw. Linear pitch sweep, attack/decay envelope.

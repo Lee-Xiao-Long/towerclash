@@ -42,6 +42,9 @@ var _banner: Control
 var _message: Label
 var _result: Control
 var _last_mana := -1
+var _last_phase := -1
+var _hp_at_wave := -1
+var _last_tick := -1
 var _last_hp := [-1, -1]
 
 
@@ -342,8 +345,10 @@ func update_from(snap: Dictionary, me: int) -> void:
 	_summon_cost.text = str(cost)
 	var full: bool = snap.tw[me].size() >= GameData.slot_count()
 	_summon.modulate = Color.WHITE if mana >= cost and not full else Color(0.75, 0.75, 0.8)
-	_wave_label.text = "Wave %d/%d" % [int(snap.r) + 1, int(snap.rn)] if int(snap.ph) != MatchSim.Phase.INTERMISSION else "Break"
+	var ph := int(snap.ph)
+	_wave_label.text = "Wave %d/%d" % [int(snap.r) + 1, int(snap.rn)] if ph != MatchSim.Phase.INTERMISSION else "Break"
 	_timer_label.text = UiKit.mmss(float(snap.tl)).lpad(5, "0")
+	_wave_moments(ph, int(p[1]), float(snap.tl), int(snap.r) >= int(snap.rn) - 1)
 	_set_hearts(0, int(p[1]))
 	_set_hearts(1, int(o[1]))
 	_set_incoming(0, int(p[3]))
@@ -365,6 +370,60 @@ func update_from(snap: Dictionary, me: int) -> void:
 			var up := -1 if lvl > costs.size() else int(costs[lvl - 1])
 			c.cost.text = "MAX" if up < 0 else str(up)
 			c.button.modulate = Color.WHITE if up >= 0 and mana >= up else Color(0.72, 0.72, 0.78)
+
+
+## Wave-end bonus toast and last-seconds countdown (urgency).
+func _wave_moments(ph: int, hp: int, time_left: float, final_round: bool) -> void:
+	if ph == MatchSim.Phase.WAVE and _last_phase != MatchSim.Phase.WAVE:
+		_hp_at_wave = hp
+	if ph == MatchSim.Phase.INTERMISSION and _last_phase == MatchSim.Phase.WAVE:
+		var bonus := int(GameData.rules.wave_bonus)
+		var perfect := hp >= _hp_at_wave
+		if perfect:
+			bonus += int(GameData.rules.perfect_wave_bonus)
+		_float_text("+%d  %s" % [bonus, "Perfect wave!" if perfect else "Wave clear"], Color("ffe066") if perfect else Color.WHITE,
+				_mana_pill.position + Vector2(_mana_pill.size.x * 0.5, -10))
+		Sfx.play("bonus", 0.0)
+	_last_phase = ph
+	var urgent := ph == MatchSim.Phase.WAVE and time_left <= 5.0 and time_left > 0.0 and not final_round
+	_timer_label.add_theme_color_override("font_color", Color("ff5a4a") if urgent else Color("ffe066"))
+	var sec := int(ceil(time_left))
+	if urgent and sec != _last_tick:
+		_last_tick = sec
+		UiKit.pop(_timer_label, 1.35, 0.3)
+		Sfx.play("tick", 0.0)
+
+
+func _float_text(text: String, c: Color, at: Vector2) -> void:
+	var l := UiKit.title(text, 24, c)
+	l.position = at - Vector2(150, 20)
+	l.custom_minimum_size = Vector2(300, 40)
+	_root.add_child(l)
+	l.pivot_offset = Vector2(150, 20)
+	l.scale = Vector2(0.4, 0.4)
+	var t := l.create_tween()
+	t.tween_property(l, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(l, "position:y", at.y - 80, 1.2)
+	t.tween_property(l, "modulate:a", 0.0, 0.3)
+	t.tween_callback(l.queue_free)
+
+
+## Summon flourish: a card flies from the summon button to a screen point, then on_land runs.
+func fly_card(to: Vector2, on_land: Callable) -> void:
+	var g := Glyph.make("card", 56)
+	g.size = Vector2(56, 56)
+	g.pivot_offset = Vector2(28, 28)
+	var from := _summon.global_position + _summon.size * 0.5 - Vector2(28, 28)
+	g.position = from
+	_root.add_child(g)
+	var dest := to - Vector2(28, 28)
+	var t := g.create_tween()
+	t.tween_property(g, "position", dest, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(g, "rotation", TAU * 0.5, 0.22)
+	t.parallel().tween_property(g, "scale", Vector2(0.6, 0.6), 0.22)
+	t.tween_callback(func():
+		g.queue_free()
+		on_land.call())
 
 
 func _set_hearts(side: int, hp: int) -> void:

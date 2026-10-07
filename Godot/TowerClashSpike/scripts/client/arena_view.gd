@@ -35,6 +35,7 @@ var _latest: Dictionary = {}
 var _enemy_nodes: Dictionary = {}     # id -> creature dict + {board, max_hp, last_hp, pos}
 var _tower_nodes: Dictionary = {}     # "p:slot" -> tower dict + {type, level, yaw, want_yaw}
 var _kills: Dictionary = {}           # enemy id -> [killer, to_opponent] awaiting node removal
+var _flights: Dictionary = {}         # my slot -> true while the summon card is in the air
 var _now := 0.0
 var _joined_at := -1.0
 var _result: Dictionary = {}
@@ -224,18 +225,17 @@ func _sync_towers(snap: Dictionary) -> void:
 				n.merge({"type": type, "level": level, "yaw": FACE_CAMERA_YAW, "want_yaw": FACE_CAMERA_YAW, "board": p, "slot": slot})
 				n.body.rotation.y = n.yaw
 				_tower_nodes[key] = n
-				_pop_in(n.root, level > 1)
-				if _is_mine(p):
-					Sfx.play("merge" if level > 1 else "summon", 0.04)
-				fx.ring(n.root.position, Figures.look_color(GameData.towers[type]).lightened(0.4), 0.7, 0.35)
-				if level > 1:
-					fx.puff(n.root.position, Color("fff3b0"), 8, 0.1)
+				if _is_mine(p) and _flights.has(slot):
+					n.root.visible = false   # revealed when the summon card lands
+				else:
+					_reveal_tower(n, level > 1)
 			elif n.level != level:
 				n.level = level
 				Figures.set_pips(n.pips, level)
 				_pop_in(n.root, true)
 				if _is_mine(p):
 					Sfx.play("merge", 0.0)
+					Sfx.buzz(25)
 			var aim := float(row[3])
 			if aim < 8.0:
 				n.want_yaw = _yaw_for(ArenaArt.heading_world(_is_mine(p), Vector2.from_angle(aim)))
@@ -247,6 +247,27 @@ func _sync_towers(snap: Dictionary) -> void:
 			_tower_nodes.erase(key)
 			if _drag_src >= 0 and key == "%d:%d" % [Net.my_index, _drag_src]:
 				_drag_src = -1
+
+
+func _reveal_tower(n: Dictionary, merged: bool) -> void:
+	n.root.visible = true
+	_pop_in(n.root, merged)
+	fx.ring(n.root.position, Figures.look_color(GameData.towers[n.type]).lightened(0.4), 0.7, 0.35)
+	if merged:
+		fx.puff(n.root.position, Color("fff3b0"), 8, 0.1)
+	if _is_mine(n.board):
+		Sfx.play("merge" if merged else "summon", 0.04)
+		if merged:
+			Sfx.buzz(25)
+
+
+func _on_summon_landed(slot: int) -> void:
+	_flights.erase(slot)
+	var key := "%d:%d" % [Net.my_index, slot]
+	if _tower_nodes.has(key):
+		var n: Dictionary = _tower_nodes[key]
+		_reveal_tower(n, n.level > 1)
+		fx.puff(n.root.position, Color.WHITE, 6, 0.09)
 
 
 func _pop_in(root: Node3D, big: bool) -> void:
@@ -449,6 +470,7 @@ func _on_base_hit(board: int) -> void:
 	fx.puff(castle_pos + Vector3(0, 0.4, 0), Color("ff6b5b"), 10, 0.13)
 	if mine:
 		fx.shake(0.2, 0.35)
+		Sfx.buzz(60)
 	hud.base_hit(mine)
 
 
@@ -504,6 +526,13 @@ func _on_action(res: Dictionary) -> void:
 		_counts[key] += 1
 	if not res.get("ok", false):
 		hud.action_failed(str(res.get("action", "")), str(res.get("reason", "")))
+	elif res.get("action", "") == "place":
+		var slot := int(res.slot)
+		var tkey := "%d:%d" % [Net.my_index, slot]
+		if _tower_nodes.has(tkey):
+			_tower_nodes[tkey].root.visible = false   # snapshot beat the reply: hide until landing
+		_flights[slot] = true
+		hud.fly_card(camera.unproject_position(_slot_world(Net.my_index, slot) + Vector3(0, 0.4, 0)), _on_summon_landed.bind(slot))
 
 
 # ---------------------------------------------------------------- bot
