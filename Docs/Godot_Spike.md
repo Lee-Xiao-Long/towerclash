@@ -322,7 +322,16 @@ Logs go to `Godot/logs/<run>_<stamp>/` and exports to `Godot/build/`; both are g
 `tools/play_local.sh`, `tools/check.sh` and `tools/get_eosg.sh` take the same options as the
 `.ps1` tools, in `--kebab-case`.
 - Godot binary: `$GODOT`, default `/Applications/Godot.app/Contents/MacOS/Godot` on a Mac.
-- Tested on Windows under Git Bash (2026-10-07). Not yet run on macOS [Unverified].
+- Tested on Windows under Git Bash and on macOS (MacBook Pro M4 Max, 2026-10-07): `check.sh`
+  passes; `play_local.sh --local --loops 1 --wait` PASS; manual play vs a bot works.
+- On a fresh checkout the first `check.sh` reports 4 errors for the project font
+  (`LilitaOne-Regular.ttf` is loaded before it is imported). The second run is clean.
+- Retina: Godot sizes the window in physical pixels, so 540x960 showed at half size on a 2x
+  screen. `main.gd` `_fit_hidpi_window()` scales the window by the screen scale on desktop,
+  capped to the usable height (1.88x on a 14" MBP, rendering at 1014x1802). Mobile and
+  Windows (scale 1.0) are unaffected.
+- Mac perf (Metal, Forward Mobile, 120 Hz ProMotion): ~119 fps vsync-locked at 1014x1802,
+  315-824 max draw calls per client in a 4x-speed bot match.
 
 ```bash
 export GODOT=/Applications/Godot.app/Contents/MacOS/Godot   # if Godot 4.7.2 lives elsewhere
