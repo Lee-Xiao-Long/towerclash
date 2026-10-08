@@ -10,7 +10,16 @@ signal play_pressed
 const PAGES := ["SHOP", "DECK", "BATTLE", "PROFILE", "SETTINGS"]
 const PAGE_ICONS := ["chest", "card", "swords", "person", "gear"]
 const BATTLE := 2
-const SWIPE_PX := 90.0
+## Drag paging: the strip follows the finger with mild resistance (exponential ease-out, scale
+## RESIST page widths) and a stiff rubber band past the first/last page. On release it slides
+## to the neighbour when dragged past COMMIT_FRAC of a page or flicked faster than FLICK_PAGES
+## page widths per second; otherwise it springs back.
+const DRAG_START_PX := 14.0
+const RESIST := 1.2
+const EDGE_RESIST := 0.12
+const COMMIT_FRAC := 0.25
+const FLICK_PAGES := 1.1
+enum Drag { IDLE, PENDING, DRAGGING }
 ## Placeholder progression derived from real wins (no economy yet): a new arena every 5 wins.
 const WINS_PER_ARENA := 5
 
@@ -24,7 +33,14 @@ var _pages: Array[Control] = []
 var _tabs: Array[Button] = []
 var _page := BATTLE
 var _summary: Control
-var _press_pos := Vector2.INF
+var _press_pos := Vector2.ZERO
+var _drag := Drag.IDLE
+var _raw0 := 0.0
+var _vel := 0.0
+var _last_x := 0.0
+var _last_us := 0
+var _cancelling := false
+var _tween: Tween
 var _deck_pick := 0
 var _hero_pick := randi()
 
@@ -115,26 +131,122 @@ func show_page(i: int, animate := true) -> void:
 		UiKit.style_button(_tabs[t], c, e)
 		_tabs[t].get_child(0).get_node("Caption").visible = on or t == BATTLE
 	var target := -_page * _clip.size.x
+	if _tween != null:
+		_tween.kill()
 	if animate:
-		create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT) \
-				.tween_property(_strip, "position:x", target, 0.25)
+		# Duration scales with the distance left, so a release near the target settles quickly.
+		var secs := clampf(0.34 * absf(target - _strip.position.x) / maxf(1.0, _clip.size.x), 0.12, 0.34)
+		_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_tween.tween_property(_strip, "position:x", target, secs)
 	else:
 		_strip.position.x = target
 
 
+## Uses mouse events only: on iOS/Android touches arrive as emulated mouse events too
+## (input_devices/pointing/emulate_mouse_from_touch, on by default), which is also what the
+## page buttons see.
 func _input(event: InputEvent) -> void:
+	if _cancelling:
+		return
 	if not visible or _summary != null:
+		_drag = Drag.IDLE
 		return
-	var press: bool = event is InputEventScreenTouch or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT)
-	if not press:
-		return
-	if event.pressed:
-		_press_pos = event.position if _clip.get_global_rect().has_point(event.position) else Vector2.INF
-	elif _press_pos != Vector2.INF:
-		var d: Vector2 = event.position - _press_pos
-		_press_pos = Vector2.INF
-		if absf(d.x) > SWIPE_PX and absf(d.x) > absf(d.y) * 1.5:
-			show_page(_page + (1 if d.x < 0 else -1))
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			if not _clip.get_global_rect().has_point(event.position):
+				return
+			_press_pos = event.position
+			_last_x = event.position.x
+			_last_us = Time.get_ticks_usec()
+			_vel = 0.0
+			_raw0 = _unresist(_strip.position.x + _page * _clip.size.x)
+			_drag = Drag.PENDING
+			if _tween != null and _tween.is_running():
+				# Catching a sliding page grabs it rather than clicking what is under the finger.
+				_tween.kill()
+				_drag = Drag.DRAGGING
+				get_viewport().set_input_as_handled()
+		elif _drag != Drag.IDLE:
+			if _drag == Drag.DRAGGING:
+				get_viewport().set_input_as_handled()
+				_release_drag()
+			_drag = Drag.IDLE
+	elif event is InputEventMouseMotion and _drag != Drag.IDLE:
+		if not event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_drag = Drag.IDLE
+			return
+		if _drag == Drag.PENDING:
+			var d: Vector2 = event.position - _press_pos
+			if maxf(absf(d.x), absf(d.y)) < DRAG_START_PX:
+				return
+			if absf(d.x) < absf(d.y) * 1.2:
+				_drag = Drag.IDLE
+				return
+			_drag = Drag.DRAGGING
+			_press_pos.x = event.position.x
+			_cancel_gui_press.call_deferred()
+		get_viewport().set_input_as_handled()
+		var now := Time.get_ticks_usec()
+		var dt := maxf(0.001, (now - _last_us) / 1e6)
+		_vel = lerpf(_vel, (event.position.x - _last_x) / dt, 0.5)
+		_last_x = event.position.x
+		_last_us = now
+		var raw: float = _raw0 + event.position.x - _press_pos.x
+		_strip.position.x = -_page * _clip.size.x + _resist(raw)
+
+
+## A drag that started on a button: move the pointer off it and release there, so the button
+## drops its pressed state without emitting `pressed`.
+func _cancel_gui_press() -> void:
+	_cancelling = true
+	var far := Vector2(-100000, -100000)
+	var mm := InputEventMouseMotion.new()
+	mm.position = far
+	mm.global_position = far
+	mm.button_mask = MOUSE_BUTTON_MASK_LEFT
+	get_viewport().push_input(mm)
+	var mb := InputEventMouseButton.new()
+	mb.position = far
+	mb.global_position = far
+	mb.button_index = MOUSE_BUTTON_LEFT
+	mb.pressed = false
+	get_viewport().push_input(mb)
+	_cancelling = false
+
+
+func _release_drag() -> void:
+	var w := _clip.size.x
+	var off := _strip.position.x + _page * w
+	if Time.get_ticks_usec() - _last_us > 80000:
+		_vel = 0.0  # the finger stopped before lifting: no flick
+	var dir := 0
+	if absf(_vel) > FLICK_PAGES * w:
+		dir = -1 if _vel > 0.0 else 1
+	elif absf(off) > COMMIT_FRAC * w:
+		dir = -1 if off > 0.0 else 1
+	var next := clampi(_page + dir, 0, PAGES.size() - 1)
+	if next != _page:
+		Sfx.play("click")
+	show_page(next)
+
+
+## Finger offset -> strip offset. Exponential ease-out with scale r page widths: close to 1:1 for
+## small drags, increasingly heavy further out; r is small (stiff) where there is no neighbour.
+func _resist(raw: float) -> float:
+	var w := maxf(1.0, _clip.size.x)
+	var r := _resist_scale(raw) * w
+	return clampf(signf(raw) * r * (1.0 - exp(-absf(raw) / r)), -w, w)
+
+
+func _unresist(off: float) -> float:
+	var w := maxf(1.0, _clip.size.x)
+	var r := _resist_scale(off) * w
+	return signf(off) * -r * log(1.0 - minf(absf(off) / r, 0.999))
+
+
+func _resist_scale(offset: float) -> float:
+	var neighbour := _page - int(signf(offset))
+	return RESIST if neighbour >= 0 and neighbour < PAGES.size() else EDGE_RESIST
 
 
 func refresh() -> void:
