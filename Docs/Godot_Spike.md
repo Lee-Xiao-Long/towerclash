@@ -168,6 +168,26 @@ Full notes: `Art_Baseline.md`.
 - So memory, not CPU, bounds one process per match. Because the sim is a plain `MatchSim` object,
   several matches per process is a cheap later option.
 
+### Server density measurement (2026-10-09)
+
+Release Windows server export, one match, 1x real time, two headless bot clients. No
+`--codec-check` and no EOS. Machine: Ryzen 9 5950X (16C/32T), 128 GB.
+
+| | CPU (% of one core) | Working set | Private memory |
+|---|---|---|---|
+| Idle, waiting for players | 0.62 % | 96 MB | 57 MB |
+| During a match (123 s, 4 waves) | 1.24 % (1.53 CPU-s) | 96 MB | 57 MB |
+
+- Most of the working set is the shared executable image. Each extra server process costs
+  about the **private** figure (~57 MB).
+- The pure sim is a small part of the CPU: `--simtest` puts it at ~0.3-0.5 CPU-s per full match.
+  The rest is the engine loop (30 Hz frames, ENet polling) plus snapshot encoding and RPC.
+- Network: ~1.3 KB/s snapshot payload per client, ~3.5 KB/s per match including headers [estimate].
+- Not measured yet:
+  - the Linux build in a container;
+  - EOS enabled on the server (the EOS SDK adds threads and memory);
+  - many processes at once (scheduler and cache effects).
+
 ### EOS (EOSG 2.3.1)
 - Install: `tools/get_eosg.ps1` (git-ignored addon; Windows + Linux binaries installed).
   Credentials: `tools/make_eos_credentials.ps1` reads the UE `Config/*.ini` and writes the
