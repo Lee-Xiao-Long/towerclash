@@ -121,7 +121,7 @@ if (-not $NoServer) {
 for ($i = 0; $i -lt $Clients; $i++) {
     $isBot = $i -ge ($Clients - $Bots)
     $name = $(if ($isBot) { "Bot$i" } else { "Player$i" })
-    $ua = @("--profile=$ProfilePrefix$i", "--name=$name")
+    $ua = @("--profile=$ProfilePrefix$i", "--name=$name", "--fixed-window")
     if ($isBot) { $ua += @("--bot", "--bot-speed=$TimeScale", "--mute"); if ($Loops -gt 0) { $ua += "--loops=$Loops" } }
     if ($Connect -ne "") { $ua += "--local=$Connect" } elseif ($useEos) { $ua += "--online" } else { $ua += "--local=127.0.0.1:$Port" }
     if ($DevAuth -ne "") { $ua += @("--devauth=$DevAuth", "--devcred=$DevCredPrefix$i") }

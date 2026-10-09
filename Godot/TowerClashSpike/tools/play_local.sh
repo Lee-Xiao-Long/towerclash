@@ -124,7 +124,7 @@ i=0
 while [ "$i" -lt "$CLIENTS" ]; do
   IS_BOT=0; [ "$i" -ge $((CLIENTS - BOTS)) ] && IS_BOT=1
   if [ "$IS_BOT" = 1 ]; then NAME="Bot$i"; else NAME="Player$i"; fi
-  UA="--profile=$PREFIX$i --name=$NAME"
+  UA="--profile=$PREFIX$i --name=$NAME --fixed-window"
   if [ "$IS_BOT" = 1 ]; then
     UA="$UA --bot --bot-speed=$TIMESCALE --mute"
     [ "$LOOPS" -gt 0 ] && UA="$UA --loops=$LOOPS"

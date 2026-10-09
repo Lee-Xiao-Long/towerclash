@@ -8,6 +8,7 @@ extends Node
 ##   --loops=N        quit after N matches (0 = never); for unattended runs
 ##   --local=host:port  skip EOS and connect straight to a server (like UE UseLocalServerConnection)
 ##   --online         force EOS matchmaking regardless of the profile setting
+##   --fixed-window   keep the launcher's --position/size; do not restore or save the window rect
 ##   --app-shots=<dir>  save one screenshot per screen (splash, home pages, matchmaking, match, result)
 
 const SEARCH_TIMEOUT_S := 120.0
@@ -168,13 +169,14 @@ func _show_home(entry: Dictionary, with_summary: bool) -> void:
 
 ## Desktop only. Restores the window rect saved in the profile when it is still on a screen;
 ## otherwise fits the 9:16 window inside the usable screen area (a 540x960 window is taller than
-## many laptop screens, e.g. MacBooks) and centres it. A launcher --position wins (test layouts).
+## many laptop screens, e.g. MacBooks) and centres it. --fixed-window (the launchers pass it with
+## --position, which Godot consumes before scripts see it) keeps that layout and skips saving.
 func _place_window() -> void:
 	if DisplayServer.get_name() == "headless" or OS.has_feature("mobile"):
 		return
 	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
 		return
-	var explicit_pos := OS.get_cmdline_args().has("--position")
+	var explicit_pos := Net.args.has("fixed-window")
 	var saved = profile.setting("window")
 	if not explicit_pos and saved is Array and saved.size() == 4:
 		var r := Rect2i(int(saved[0]), int(saved[1]), int(saved[2]), int(saved[3]))
@@ -198,7 +200,7 @@ func _place_window() -> void:
 func _save_window() -> void:
 	if DisplayServer.get_name() == "headless" or OS.has_feature("mobile") or profile == null:
 		return
-	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+	if Net.args.has("fixed-window") or DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
 		return
 	var p := DisplayServer.window_get_position()
 	var s := DisplayServer.window_get_size()
