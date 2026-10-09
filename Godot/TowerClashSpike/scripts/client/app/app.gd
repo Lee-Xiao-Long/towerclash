@@ -41,6 +41,7 @@ func _ready() -> void:
 	bot = a.has("bot") or bool(profile.setting("autoplay"))
 	if not a.has("mute"):
 		Sfx.set_enabled(bool(profile.setting("sound")))
+	_place_window()
 	_loops = int(a.get("loops", "0"))
 	_shots_dir = str(a.get("app-shots", ""))
 	if _shots_dir != "":
@@ -163,7 +164,49 @@ func _show_home(entry: Dictionary, with_summary: bool) -> void:
 			_play()
 
 
+# ---------------------------------------------------------------- desktop window
+
+## Desktop only. Restores the window rect saved in the profile when it is still on a screen;
+## otherwise fits the 9:16 window inside the usable screen area (a 540x960 window is taller than
+## many laptop screens, e.g. MacBooks) and centres it. A launcher --position wins (test layouts).
+func _place_window() -> void:
+	if DisplayServer.get_name() == "headless" or OS.has_feature("mobile"):
+		return
+	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		return
+	var explicit_pos := OS.get_cmdline_args().has("--position")
+	var saved = profile.setting("window")
+	if not explicit_pos and saved is Array and saved.size() == 4:
+		var r := Rect2i(int(saved[0]), int(saved[1]), int(saved[2]), int(saved[3]))
+		for s in DisplayServer.get_screen_count():
+			var u := DisplayServer.screen_get_usable_rect(s)
+			if u.encloses(Rect2i(r.position, Vector2i(mini(r.size.x, u.size.x), mini(r.size.y, u.size.y)))) and r.size.y <= u.size.y:
+				DisplayServer.window_set_size(r.size)
+				DisplayServer.window_set_position(r.position)
+				return
+	var screen := DisplayServer.window_get_current_screen()
+	var usable := DisplayServer.screen_get_usable_rect(screen)
+	var size := DisplayServer.window_get_size()
+	var max_h := int(usable.size.y * 0.92)
+	if size.y > max_h:
+		size = Vector2i(int(size.x * float(max_h) / size.y), max_h)
+		DisplayServer.window_set_size(size)
+	if not explicit_pos:
+		DisplayServer.window_set_position(usable.position + (usable.size - size) / 2)
+
+
+func _save_window() -> void:
+	if DisplayServer.get_name() == "headless" or OS.has_feature("mobile") or profile == null:
+		return
+	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		return
+	var p := DisplayServer.window_get_position()
+	var s := DisplayServer.window_get_size()
+	profile.set_setting("window", [p.x, p.y, s.x, s.y])
+
+
 func _quit() -> void:
+	_save_window()
 	Net.leave()
 	Online.quit(0)
 

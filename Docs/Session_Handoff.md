@@ -6,53 +6,87 @@
 
 ---
 
-## Current State / Next Action (updated 2026-10-07)
+## Current State / Next Action (updated 2026-10-09, before the user went mobile on the MacBook)
 
-- **2026-10-07 (Claude Code, overnight):** the user redirected the work to restyling the
-  Godot spike after Rush Royale (refs in `refs/images/`). This is a temporary baseline to hone
-  mechanics, HUD, sounds, shake and impact before TowerClash gets its own art direction.
-  - Done and committed in local steps (see `git log`):
-    - arena, units/enemies, FX, SFX, HUD, card upgrades;
-    - mesh baking;
-    - menus;
-    - docs.
-  - Details: `Docs/Art_Baseline.md`. Summary: `Godot_Spike.md` "Rush Royale Baseline Restyle".
-  - Later idea from the user: move hot paths to Rust (godot-rust GDExtension) once the game is
-    further along. Not started.
-  - Later on 2026-10-07: early waves eased (simtest 200: matches ending in waves 1-2 went
-    47% -> 11%; avg end wave 3.8 -> 5.8; wave 4 is still the main cliff). The card bonus stays +25%.
-  - Mac support: `play_local.sh` / `check.sh` / `get_eosg.sh`. Cross-machine LAN hosting
-    options: `-ServerOnly -PublicAddress`, `-NoServer`, `-Connect`. A `--devauth` DevAuthTool
-    login exists but has not been run. See `Godot_Spike.md` "How to Run".
-  - **Next (user):**
-    1. Test on the MacBook (Retina rendering and performance).
-    2. Headless server hosting reachable from both machines with EOS enabled: Windows LAN host
-       first, then a Docker container with the Linux server export.
-    3. Then client feature refinement.
-  - **2026-10-09: first remote internet match PASSED.**
-    - Server: Docker container on the Windows PC (`Godot/server`, EOS on), advertising the public
-      IP; router forwards UDP 7777.
-    - Client: the macOS build (`build/macos_client`) on the MacBook through an external VPN.
-      It found the server via EOS search and connected through the router.
-    - Opponent: a LAN bot client. The match ran and the session went `in_match` -> `open`.
-    - Next: a real match with the remote colleague, then Retina and performance notes from the Mac.
-  - Doc step 3 (UE doc drift) is still open. When it is done, also record in UE
-    `Mirrored_View_Architecture.md` that the Godot spike now mirrors the opponent board instead
-    of rotating it.
+### Where things are
 
-- Steps 1 and 2 are done; all repos are committed and pushed.
-  - Step 1: Houdini sprite generator.
-  - Step 2: Godot spike, including the playable flow.
-- The engine decision is still pending the iOS device test on the user's MacBook
-  (`Godot_Spike.md` "Recommendation").
-- **Next, per the agreed order:** step 3, the overall doc update in the UE repo
+- The Godot spike (`Godot/TowerClashSpike/`) is restyled to copy **Rush Royale** as a temporary
+  baseline for tuning mechanics and feel.
+  - Look: arena, cartoon units/enemies, FX, synthesised SFX, RR HUD, menus.
+  - Details: `Docs/Art_Baseline.md`. Run instructions: `Docs/Godot_Spike.md` "How to Run".
+- Rules: early waves eased (simtest: games ending in waves 1-2 went 47% -> 11%). In-match card
+  upgrade at +25 % per level (user: keep it). Wave 4 is the next difficulty cliff; tuning methods
+  come later.
+- **Online works end to end over the internet** (2026-10-09):
+  - Server: a Docker container on the Windows PC (`Godot/server/`, Debian 13 + Linux export
+    + EOS). It advertises the public IP through an EOS session.
+  - The router forwards UDP 7777 to the Windows PC.
+  - Client: the macOS build, through a VPN. It found the server via EOS search and played a match.
+  - Next: the user plays the remote colleague, both on Macs.
+- Server cost (measured): ~1.2 % of one core and ~57 MB private per match; container ~72 MB
+  with EOS on. See `Godot_Spike.md` "Server density measurement".
+
+### Picking this up on the Mac (Claude Code session on the MacBook)
+
+1. `git pull`. The Windows session committed everything; the user pushes from Windows.
+2. `cd Godot/TowerClashSpike && ./tools/get_eosg.sh && ./tools/check.sh`.
+   - The EOS addon is git-ignored and needed even offline.
+   - `get_eosg.sh` and `play_local.sh` were only tested under Git Bash on Windows; this is their
+     first real macOS run.
+3. Run locally: `./tools/play_local.sh --local --bots 1`. `GODOT=` overrides the Godot path
+   (default `/Applications/Godot.app/Contents/MacOS/Godot`).
+4. Join the Windows container from the Mac:
+   - by EOS: `./tools/play_local.sh --clients 1 --bots 0 --no-server`;
+   - directly: add `--connect 50.47.158.60:7777`.
+   - EOS mode needs `eos_credentials.local.json` copied by hand (client-only is fine). Never commit it.
+5. Mac build for testers: `Godot/build/macos_client/` on the Windows PC (`TowerClashSpike.zip`
+   + client-only `eos_credentials.local.json` + `README.txt`). Exporting on a Mac would need
+   macOS export templates installed there.
+
+### Open items / next actions
+
+- **Fixed 2026-10-09, untested on a Mac:** the window was half off a MacBook screen and its
+  position was not remembered.
+  - `App._place_window()` now fits the 9:16 window inside the usable screen area and centres it.
+  - The window rect is saved to the profile on quit and restored when it is still on a screen.
+  - The macOS zip was re-exported with this fix. Check on the Mac that it opens fully on screen,
+    and that after moving it and quitting (Cmd+Q / window close) it reopens in the same place.
+- **In progress: EOS session monitor (Rust)**. User request: a small local app to watch EOS
+  sessions (listeners), active connections and drops. Plan:
+  1. **Godot server status endpoint**, not started.
+     - `--status-port=N` on the server: a tiny HTTP JSON endpoint with uptime, state, peers
+       (name, address, RTT), connect/disconnect/drop counters and recent events.
+     - EOS knows nothing about the ENet links, so connections and drops must come from the server.
+     - The container maps the status port to `127.0.0.1` only.
+  2. **Rust TUI** in `tools/eos_monitor/` (cargo, ratatui), not started.
+     - Loads the EOS SDK at runtime (`libloading`): `EOSSDK-Win64-Shipping.dll` or
+       `libEOSSDK-Mac-Shipping.dylib` from the EOSG addon folder.
+     - Searches bucket `TowerClash:QuickMatch` (all `STATE`s), reading `host_address` and
+       attributes; polls each reachable server's status endpoint.
+     - Logs appear/disappear/state changes, connects and drops.
+     - FFI: hand-written from EOS SDK 1.18 headers. On Windows they live in the UE source tree
+       (`D:\Dev\Unreal\Source5.7\Engine\Source\ThirdParty\EOSSDK\SDK\Include`), not on the Mac.
+     - Structs need `#pragma pack(8)` (= `repr(C)` on x64/arm64). Check `EOS_GetVersion()` at
+       runtime against the header API versions.
+     - Session search needs a LocalUserId: device-ID Connect login with the client credentials,
+       same as the game client.
+     - Rust 1.99 (MSVC) is installed on the Windows PC (winget `Rustlang.Rustup`).
+- **Cleanup after testing:**
+  - Remove the router UDP 7777 forward; the dev server has no authentication.
+  - Stop the container: `docker compose down` in `Godot/server`. It auto-restarts until then.
+- Still open from before:
+  - Doc step 3: UE repo doc drift (list below). Also record that the Godot spike mirrors the
+    opponent board instead of rotating it.
+  - The iOS export/device test, which gates the engine decision (`Godot_Spike.md` "Recommendation").
+  - Later idea: Rust for hot paths. The measurements say the game sim is a small slice of server
+    CPU; see the density notes.
+
+### Earlier state (2026-10-03, kept for context)
+
+- Steps 1 and 2 are done: the Houdini sprite generator, and the Godot spike with its playable flow.
+- The engine decision is pending the iOS device test.
+- Agreed next step: step 3, the UE doc update
   (`D:\Dev\Unreal\Source5.7\Games\TowerClash\Documentation\GAME_PROJECTS\TowerClash\`).
-  - Fix the "UE doc drift" list below.
-  - Record the Godot spike results and the pending engine decision; the UE docs do not
-    mention the spike yet.
-- **Optional spike follow-ups** (if the user picks them first): see "Step 2b Status" below.
-  They are Android, a VPS server, distinct EOS users, deck editing and real art.
-- **Then:** the iOS export/device test (Mac), then back to UE or a switch, based on the result.
 - **Agent tooling:** the session moved from GitHub Copilot CLI to Claude Code on 2026-10-03.
   The agent guide is shared: `.github/copilot-instructions.md`, imported by `CLAUDE.md`.
 
