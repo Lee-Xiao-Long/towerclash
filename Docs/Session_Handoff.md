@@ -29,6 +29,13 @@
     2. Headless server hosting reachable from both machines with EOS enabled: Windows LAN host
        first, then a Docker container with the Linux server export.
     3. Then client feature refinement.
+  - **2026-10-09: first remote internet match PASSED.**
+    - Server: Docker container on the Windows PC (`Godot/server`, EOS on), advertising the public
+      IP; router forwards UDP 7777.
+    - Client: the macOS build (`build/macos_client`) on the MacBook through an external VPN.
+      It found the server via EOS search and connected through the router.
+    - Opponent: a LAN bot client. The match ran and the session went `in_match` -> `open`.
+    - Next: a real match with the remote colleague, then Retina and performance notes from the Mac.
   - Doc step 3 (UE doc drift) is still open. When it is done, also record in UE
     `Mirrored_View_Architecture.md` that the Godot spike now mirrors the opponent board instead
     of rotating it.
