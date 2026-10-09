@@ -17,6 +17,6 @@ COPY --chown=towerclash --chmod=755 build/linux_server/TowerClashSpikeServer.x86
 COPY --chown=towerclash build/linux_server/TowerClashSpikeServer.pck build/linux_server/*.so ./
 
 USER towerclash
-ENV PORT=7777 PUBLIC_ADDRESS="" EOS=1 EXTRA_ARGS=""
-EXPOSE 7777/udp
+ENV PORT=7777 PUBLIC_ADDRESS="" EOS=1 STATUS_PORT=7780 EXTRA_ARGS=""
+EXPOSE 7777/udp 7780/tcp
 ENTRYPOINT ["./entrypoint.sh"]

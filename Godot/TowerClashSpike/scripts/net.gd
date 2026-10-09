@@ -42,6 +42,9 @@ var _matches := 0
 var _use_eos := false
 var _quitting := false
 var _net_stats := {}
+var _status: ServerStatus             # --status-port: read-only JSON endpoint for tools/eos_monitor
+var _port := 0
+var _peer_connected_at: Dictionary = {}   # peer id -> unix time
 
 # client
 var _hello: Dictionary = {}
@@ -111,21 +114,43 @@ func start_server(port: int) -> void:
 	multiplayer.peer_disconnected.connect(_on_server_peer_disconnected)
 	log_line("listening on %d (tick %d Hz, snapshots %d Hz, timescale %s)" % [
 		port, Engine.physics_ticks_per_second, int(round(1.0 / _snap_interval)), _timescale])
+	_port = port
+	if args.has("status-port"):
+		_status = ServerStatus.new()
+		var sp := int(args.get("status-port"))
+		var serr := _status.listen(sp)
+		if serr == OK:
+			log_line("status endpoint on tcp %d (GET -> JSON)" % sp)
+		else:
+			log_line("ERROR status endpoint %d -> %s" % [sp, error_string(serr)])
+			_status = null
+	_event("server_start", "udp %d" % port)
 	if args.has("eos"):
 		var addr := "%s:%d" % [args.get("public-address", "127.0.0.1"), port]
 		_use_eos = await Online.server_advertise(addr)
+		if _use_eos:
+			_event("eos_state", "open (advertised %s)" % addr)
 		if not _use_eos:
 			log_line("ERROR EOS advertise failed (%s); direct connections still work" % Online.last_error)
 
 
 func _on_server_peer_connected(id: int) -> void:
 	_peer_seen_at[id] = _wall
+	_peer_connected_at[id] = Time.get_unix_time_from_system()
 	log_line("peer connected %d" % id)
+	_event("connect", "peer %d from %s" % [id, _peer_address(id)])
 
 
 func _on_server_peer_disconnected(id: int) -> void:
 	log_line("peer disconnected %d" % id)
 	_peer_seen_at.erase(id)
+	_peer_connected_at.erase(id)
+	var who := "peer %d" % id
+	if _peer_to_index.has(id):
+		who = "'%s' (player %d)" % [names[_peer_to_index[id]], _peer_to_index[id]]
+	# A drop = a seated player leaving while a match is running; anything else is a normal leave.
+	var dropped: bool = _peer_to_index.has(id) and sim != null and sim.phase != MatchSim.Phase.ENDED
+	_event("drop" if dropped else "disconnect", who)
 	if not _peer_to_index.has(id):
 		return
 	var idx: int = _peer_to_index[id]
@@ -143,6 +168,8 @@ func _physics_process(delta: float) -> void:
 	_wall += delta
 	if not is_server:
 		return
+	if _status != null:
+		_status.poll(_status_snapshot)
 	_kick_idle_peers()
 	if sim == null:
 		return
@@ -167,6 +194,7 @@ func _kick_idle_peers() -> void:
 	for id in _peer_seen_at.keys():
 		if not _peer_to_index.has(id) and _wall - float(_peer_seen_at[id]) > NO_HELLO_KICK_S:
 			log_line("kicking silent peer %d" % id)
+			_event("kick", "peer %d never said hello" % id)
 			_peer_seen_at.erase(id)
 			multiplayer.multiplayer_peer.disconnect_peer(id)
 
@@ -189,8 +217,10 @@ func _reset_for_next_match() -> void:
 		_quit_server()
 		return
 	log_line("ready for next match (%d played)" % _matches)
+	_event("reset", "ready for next match (%d played)" % _matches)
 	if _use_eos:
 		Online.server_set_state(Online.STATE_OPEN)
+		_event("eos_state", "open")
 
 
 func _quit_server() -> void:
@@ -283,8 +313,54 @@ func _broadcast_end() -> void:
 		"snapshot_payload_bytes_per_s_per_client": int(float(_net_stats.snapshot_bytes) / max(sim.time, 0.001)),
 	}
 	log_line("RESULT " + JSON.stringify(res))
+	_event("match_end", "winner %s, %s, wave %d" % [
+		names[int(res.winner)] if int(res.winner) >= 0 else "none (draw)", res.reason, int(res.round)])
 	for id in _connected_player_peers():
 		match_ended.rpc_id(id, res)
+
+
+# ---------------------------------------------------------------- status (tools/eos_monitor)
+
+func _event(kind: String, detail := "") -> void:
+	if _status != null:
+		_status.event(kind, detail)
+
+
+func _peer_address(id: int) -> String:
+	var mp := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if mp == null:
+		return "?"
+	var pp := mp.get_peer(id)
+	return "?" if pp == null else "%s:%d" % [pp.get_remote_address(), pp.get_remote_port()]
+
+
+func _status_snapshot() -> Dictionary:
+	var mp := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	var peers: Array = []
+	for id in multiplayer.get_peers():
+		var pp: ENetPacketPeer = mp.get_peer(id) if mp != null else null
+		var idx: int = _peer_to_index.get(id, -1)
+		peers.append({
+			"id": id, "player": idx, "name": names[idx] if idx >= 0 else "",
+			"address": _peer_address(id),
+			"rtt_ms": int(pp.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)) if pp != null else -1,
+			"packet_loss": snappedf(pp.get_statistic(ENetPacketPeer.PEER_PACKET_LOSS) / float(ENetPacketPeer.PACKET_LOSS_SCALE), 0.001) if pp != null else 0.0,
+			"connected_unix": _peer_connected_at.get(id, 0.0),
+		})
+	var state := "waiting"
+	var match_info_out = null
+	if sim != null:
+		state = "ended" if sim.phase == MatchSim.Phase.ENDED else "in_match"
+		match_info_out = {"names": names, "round": sim.round_index + 1, "rounds": GameData.rounds.size(),
+			"phase": ["waiting", "wave", "intermission", "ended"][sim.phase], "time": snappedf(sim.time, 0.1),
+			"base_hp": [sim.players[0].base_hp, sim.players[1].base_hp]}
+	return {
+		"server": "TowerClashSpike", "build": Online.BUILD_ID, "port": _port,
+		"public_address": str(args.get("public-address", "")), "eos": _use_eos,
+		"eos_state": Online.STATE_IN_MATCH if state == "in_match" else Online.STATE_OPEN,
+		"state": state, "matches_played": _matches, "uptime_s": int(_wall),
+		"now_unix": Time.get_unix_time_from_system(), "peers": peers, "match": match_info_out,
+	}
 
 
 @rpc("any_peer", "reliable")
@@ -296,10 +372,12 @@ func hello(deck: Array, player_name: String) -> void:
 		return
 	if sim != null or (_decks[0] != null and _decks[1] != null):
 		log_line("rejecting %d: full" % id)
+		_event("reject", "peer %d '%s': full" % [id, player_name.substr(0, 24)])
 		rejected.rpc_id(id, "full")
 		return
 	if not GameData.validate_deck(deck):
 		log_line("rejecting deck from %d: %s" % [id, str(deck)])
+		_event("reject", "peer %d: invalid deck" % id)
 		rejected.rpc_id(id, "invalid_deck")
 		return
 	var idx := 0 if _decks[0] == null else 1
@@ -307,6 +385,7 @@ func hello(deck: Array, player_name: String) -> void:
 	_decks[idx] = deck
 	names[idx] = player_name.substr(0, 24)
 	log_line("peer %d '%s' is player %d deck %s" % [id, names[idx], idx, str(deck)])
+	_event("join", "'%s' is player %d" % [names[idx], idx])
 	welcome.rpc_id(id, idx)
 	if _decks[0] != null and _decks[1] != null:
 		sim = MatchSim.new()
@@ -314,10 +393,12 @@ func hello(deck: Array, player_name: String) -> void:
 		sim.setup(_decks, seed_value)
 		sim.start()
 		log_line("match started seed %d: '%s' vs '%s'" % [seed_value, names[0], names[1]])
+		_event("match_start", "'%s' vs '%s'" % [names[0], names[1]])
 		for pid in _connected_player_peers():
 			match_info.rpc_id(pid, names, _decks)
 		if _use_eos:
 			Online.server_set_state(Online.STATE_IN_MATCH)
+			_event("eos_state", "in_match")
 
 
 @rpc("any_peer", "reliable")

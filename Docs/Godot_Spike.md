@@ -431,6 +431,14 @@ Client credential lookup order:
 - on macOS, next to the `.app` (files added inside a signed bundle break its signature);
 - `user://`.
 
+### Watching sessions and connections (EOS monitor + server status endpoint)
+
+- `--status-port=N` on the server: a read-only HTTP JSON endpoint with peers (RTT, loss),
+  connect/drop/reject/kick counters, the match state and the last 100 events.
+  - No auth. The container sets `STATUS_PORT=7780` and publishes it on `127.0.0.1` only.
+- `tools/eos_monitor` (Rust) shows EOS listeners plus those endpoints as a live terminal
+  dashboard. See its README.
+
 ### Several EOS users on one machine (DevAuthTool, like UE)
 
 The EOS SDK's DevAuthTool works the same way as with UE:

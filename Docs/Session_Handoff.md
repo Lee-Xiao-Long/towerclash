@@ -51,26 +51,19 @@
   - The window rect is saved to the profile on quit and restored when it is still on a screen.
   - The macOS zip was re-exported with this fix. Check on the Mac that it opens fully on screen,
     and that after moving it and quitting (Cmd+Q / window close) it reopens in the same place.
-- **In progress: EOS session monitor (Rust)**. User request: a small local app to watch EOS
-  sessions (listeners), active connections and drops. Plan:
-  1. **Godot server status endpoint**, not started.
-     - `--status-port=N` on the server: a tiny HTTP JSON endpoint with uptime, state, peers
-       (name, address, RTT), connect/disconnect/drop counters and recent events.
-     - EOS knows nothing about the ENet links, so connections and drops must come from the server.
-     - The container maps the status port to `127.0.0.1` only.
-  2. **Rust TUI** in `tools/eos_monitor/` (cargo, ratatui), not started.
-     - Loads the EOS SDK at runtime (`libloading`): `EOSSDK-Win64-Shipping.dll` or
-       `libEOSSDK-Mac-Shipping.dylib` from the EOSG addon folder.
-     - Searches bucket `TowerClash:QuickMatch` (all `STATE`s), reading `host_address` and
-       attributes; polls each reachable server's status endpoint.
-     - Logs appear/disappear/state changes, connects and drops.
-     - FFI: hand-written from EOS SDK 1.18 headers. On Windows they live in the UE source tree
-       (`D:\Dev\Unreal\Source5.7\Engine\Source\ThirdParty\EOSSDK\SDK\Include`), not on the Mac.
-     - Structs need `#pragma pack(8)` (= `repr(C)` on x64/arm64). Check `EOS_GetVersion()` at
-       runtime against the header API versions.
-     - Session search needs a LocalUserId: device-ID Connect login with the client credentials,
-       same as the game client.
-     - Rust 1.99 (MSVC) is installed on the Windows PC (winget `Rustlang.Rustup`).
+- **Done 2026-10-09: EOS session monitor (Rust)** in `tools/eos_monitor/`. See its README.
+  - Terminal dashboard of EOS listeners (sessions, `STATE`, `BUILD`), game servers
+    (state, wave, hearts, counters), connections (RTT, loss) and an event log (connects, joins,
+    **drops**, rejects, kicks, `STATE` flips).
+  - Also `--once` (text report) and `--snapshot N` (one rendered frame as text).
+  - Connections and drops come from the new server `--status-port` JSON endpoint
+    (`scripts/server_status.gd`). The container maps it to `127.0.0.1:7780` only.
+  - Tested on Windows against the live container (client and server mode) and a local server,
+    including a real drop. Not yet built on the Mac: `cargo build --release` there.
+  - EOS gotcha (again): never unload the SDK. The monitor holds the library forever and ends with
+    `TerminateProcess` / `_exit`.
+  - **The running container still has the old build.** A new image with the status endpoint is
+    built (`towerclash-server:dev`). Apply it between matches: `docker compose up -d` in `Godot/server`.
 - **Cleanup after testing:**
   - Remove the router UDP 7777 forward; the dev server has no authentication.
   - Stop the container: `docker compose down` in `Godot/server`. It auto-restarts until then.

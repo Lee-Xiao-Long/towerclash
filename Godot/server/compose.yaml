@@ -13,9 +13,12 @@ services:
       PORT: "${PORT:-7777}"
       PUBLIC_ADDRESS: "${PUBLIC_ADDRESS:-127.0.0.1}"
       EOS: "${EOS:-1}"
+      STATUS_PORT: "7780"
       EXTRA_ARGS: "${EXTRA_ARGS:-}"
     ports:
       - "${PORT:-7777}:${PORT:-7777}/udp"
+      # Status endpoint for tools/eos_monitor: no auth, so loopback only. Do not forward it.
+      - "127.0.0.1:${STATUS_PORT:-7780}:7780/tcp"
     volumes:
       # Server-only credentials (no client secret), written by build_image.ps1. Git-ignored.
       - ./eos_server_credentials.local.json:/srv/towerclash/eos_credentials.local.json:ro
