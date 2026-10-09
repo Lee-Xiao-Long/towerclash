@@ -27,12 +27,21 @@ var _state_applied := ""
 var _state_worker := false
 
 
+## Exports exclude *.local.json, so a built game looks, in order: next to the executable; on
+## macOS next to the .app bundle (adding files inside a signed bundle breaks its signature);
+## then the user data folder. The first hit wins.
 func credentials_path() -> String:
-	var p := "res://" + CREDS_FILE
-	if FileAccess.file_exists(p):
-		return p
-	# Exports exclude *.local.json, so a built game reads the file placed next to the executable.
-	return OS.get_executable_path().get_base_dir().path_join(CREDS_FILE)
+	var candidates: Array[String] = ["res://" + CREDS_FILE]
+	var exe_dir := OS.get_executable_path().get_base_dir()
+	candidates.append(exe_dir.path_join(CREDS_FILE))
+	if OS.get_name() == "macOS":
+		# <dir>/TowerClash.app/Contents/MacOS/<exe> -> <dir>
+		candidates.append(exe_dir.get_base_dir().get_base_dir().get_base_dir().path_join(CREDS_FILE))
+	candidates.append(OS.get_user_data_dir().path_join(CREDS_FILE))
+	for c in candidates:
+		if FileAccess.file_exists(c):
+			return c
+	return candidates[1]
 
 
 func has_credentials() -> bool:

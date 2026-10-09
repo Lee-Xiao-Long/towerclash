@@ -412,6 +412,25 @@ docker compose up -d ; docker compose logs -f ; docker compose down
 - Container usage: ~72 MB, ~2 % of a core with EOS on, Docker Desktop on Windows.
 - `run/flush_stdout_on_print=true` (project.godot) makes `docker compose logs` show lines live.
 
+### Remote test over the internet (router port forward)
+
+1. Router: forward **UDP 7777** to this PC (192.168.0.16). Windows firewall rule
+   "TowerClash dev server" (UDP 7777, Private) already exists.
+2. `Godot/server/.env`: `PUBLIC_ADDRESS=<public IP>`, then `docker compose up -d`.
+3. macOS clients: the "macOS Client" export preset produces a universal zip, ad-hoc signed
+   (no notarization), in `build/macos_client/`.
+   - Export templates: `macos.zip` taken from the official 4.7.2 `.tpz`.
+   - EOSG binaries: `tools/get_eosg.ps1 -Platform macos`.
+   - Ship the zip with a **client-only** `eos_credentials.local.json` placed next to the
+     `.app`, plus the README.
+   - Testers clear the quarantine once with `xattr -dr com.apple.quarantine TowerClashSpike.app`.
+4. Close the port forward after testing: the dev server has no authentication.
+
+Client credential lookup order:
+- next to the executable;
+- on macOS, next to the `.app` (files added inside a signed bundle break its signature);
+- `user://`.
+
 ### Several EOS users on one machine (DevAuthTool, like UE)
 
 The EOS SDK's DevAuthTool works the same way as with UE:
