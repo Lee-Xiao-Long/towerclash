@@ -389,6 +389,29 @@ Host the server on one machine and tell it which address to advertise.
 - Each role has its own tracking file, so client launches do not stop a `-ServerOnly` server
   on the same machine. `-Stop` / `--stop` closes all of them.
 
+### Dedicated server in a container (Docker, Linux build)
+
+`Godot/server/`: `Dockerfile`, `entrypoint.sh`, `compose.yaml`, `build_image.ps1`, `.env.example`.
+- The image (`towerclash-server:dev`, ~256 MB) is Debian 13 slim plus the "Linux Server" export
+  and the EOS libraries.
+- EOSG's `libeosg` needs **glibc >= 2.38**, so Debian 12 does not work.
+- EOS credentials are not in the image. `build_image.ps1` writes a **server-only**
+  `eos_server_credentials.local.json` (no client secret), which compose mounts read-only.
+- The server advertises `PUBLIC_ADDRESS:PORT` in the EOS session. The host port must equal `PORT`.
+
+```powershell
+cd Godot/server
+./build_image.ps1                 # export Linux server + docker build (+ server creds)
+copy .env.example .env            # set PUBLIC_ADDRESS (git-ignored)
+docker compose up -d ; docker compose logs -f ; docker compose down
+```
+
+- Verified 2026-10-09: two Windows clients found the container through EOS session search
+  (`play_local.ps1 -NoServer`) and played a full match. The session went `in_match` -> `open`
+  and the server reset.
+- Container usage: ~72 MB, ~2 % of a core with EOS on, Docker Desktop on Windows.
+- `run/flush_stdout_on_print=true` (project.godot) makes `docker compose logs` show lines live.
+
 ### Several EOS users on one machine (DevAuthTool, like UE)
 
 The EOS SDK's DevAuthTool works the same way as with UE:

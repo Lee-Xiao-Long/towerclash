@@ -1,0 +1,23 @@
+# TowerClash spike dedicated server. Run from Godot/server/:
+#   ./build_image.ps1                      # export Linux server + build image + write server creds
+#   $env:PUBLIC_ADDRESS="203.0.113.7"; docker compose up -d
+#   docker compose logs -f ; docker compose down
+# PUBLIC_ADDRESS must be the address remote clients can reach (public IP with a router UDP
+# forward, or a Tailscale/LAN IP). The host port must equal PORT: the server advertises its own port.
+services:
+  towerclash-server:
+    image: towerclash-server:dev
+    init: true
+    restart: unless-stopped
+    environment:
+      PORT: "${PORT:-7777}"
+      PUBLIC_ADDRESS: "${PUBLIC_ADDRESS:-127.0.0.1}"
+      EOS: "${EOS:-1}"
+      EXTRA_ARGS: "${EXTRA_ARGS:-}"
+    ports:
+      - "${PORT:-7777}:${PORT:-7777}/udp"
+    volumes:
+      # Server-only credentials (no client secret), written by build_image.ps1. Git-ignored.
+      - ./eos_server_credentials.local.json:/srv/towerclash/eos_credentials.local.json:ro
+    mem_limit: 512m
+    cpus: 1.0

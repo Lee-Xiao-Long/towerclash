@@ -1,0 +1,6 @@
+# Build context is Godot/: only the Linux server export and the server/ scripts go in.
+*
+!build/linux_server/TowerClashSpikeServer.x86_64
+!build/linux_server/TowerClashSpikeServer.pck
+!build/linux_server/*.so
+!server/entrypoint.sh
