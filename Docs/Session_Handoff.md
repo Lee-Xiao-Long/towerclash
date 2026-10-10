@@ -22,7 +22,8 @@
     + EOS). It advertises the public IP through an EOS session.
   - The router forwards UDP 7777 to the Windows PC.
   - Client: the macOS build, through a VPN. It found the server via EOS search and played a match.
-  - Next: the user plays the remote colleague, both on Macs.
+  - **2026-10-09: remote 1v1 between two MacBooks (user + colleague, separate networks) worked.**
+    Both used the macOS build, EOS search and the home container.
 - Server cost (measured): ~1.2 % of one core and ~57 MB private per match; container ~72 MB
   with EOS on. See `Godot_Spike.md` "Server density measurement".
 
