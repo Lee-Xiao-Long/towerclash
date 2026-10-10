@@ -355,6 +355,7 @@ impl App {
         let row = self.status.entry(ep.clone()).or_default();
         match r {
             Ok(v) => {
+                let addrs = server_addrs(&v);
                 if row.error.is_some() || row.last_ok.is_none() {
                     new_events.push((now, format!("[{ep}] status reachable"), Tone::Info));
                 }
@@ -363,7 +364,10 @@ impl App {
                         let t = e.get("t").and_then(Value::as_f64).unwrap_or(0.0);
                         if t > row.last_event_t {
                             let kind = e.get("kind").and_then(Value::as_str).unwrap_or("?");
-                            let detail = e.get("detail").and_then(Value::as_str).unwrap_or("");
+                            let mut detail = e.get("detail").and_then(Value::as_str).unwrap_or("").to_string();
+                            if let Some((head, addr)) = detail.rsplit_once(" from ") {
+                                detail = format!("{head} from {}", tag_address(addr, &addrs));
+                            }
                             new_events.push((unix_to_local(t), format!("[{ep}] {kind}: {detail}"), tone_for(kind)));
                             row.last_event_t = t;
                         }
@@ -383,6 +387,33 @@ impl App {
         for (at, text, tone) in new_events {
             self.push(at, text, tone);
         }
+    }
+}
+
+/// True when `ip` looks like the gateway of a NAT in front of the server, e.g. Docker Desktop,
+/// which relays published ports so every client appears as the bridge gateway (x.y.0.1).
+/// Uses the server's own addresses when reported, else Docker's default 172.17-31.x.1 range.
+fn is_nat_gateway(ip: &str, server_addrs: &[String]) -> bool {
+    let o: Vec<u8> = ip.split('.').filter_map(|p| p.parse().ok()).collect();
+    if o.len() != 4 || o[3] != 1 {
+        return false;
+    }
+    let same_net = server_addrs.iter().any(|a| {
+        let s: Vec<u8> = a.split('.').filter_map(|p| p.parse().ok()).collect();
+        s.len() == 4 && s[0] == o[0] && s[1] == o[1] && a != ip
+    });
+    same_net || (o[0] == 172 && (17..=31).contains(&o[1]))
+}
+
+fn server_addrs(v: &Value) -> Vec<String> {
+    v["local_addresses"].as_array().into_iter().flatten().filter_map(|a| a.as_str().map(str::to_string)).collect()
+}
+
+/// "ip:port" -> "ip:port (Docker NAT)" when the ip is a NAT gateway.
+fn tag_address(addr: &str, server_addrs: &[String]) -> String {
+    match addr.rsplit_once(':') {
+        Some((ip, _)) if is_nat_gateway(ip, server_addrs) => format!("{addr} (Docker NAT, real IP hidden)"),
+        _ => addr.to_string(),
     }
 }
 
@@ -517,6 +548,7 @@ fn draw(f: &mut ratatui::Frame, app: &App) {
             continue;
         }
         let now = v["now_unix"].as_f64().unwrap_or(0.0);
+        let addrs = server_addrs(v);
         for p in v["peers"].as_array().into_iter().flatten() {
             let rtt = p["rtt_ms"].as_i64().unwrap_or(-1);
             let rtt_style = Style::new().fg(if rtt > 150 { Color::Red } else if rtt > 80 { Color::Yellow } else { Color::Green });
@@ -525,14 +557,14 @@ fn draw(f: &mut ratatui::Frame, app: &App) {
                 Span::raw(ep.clone()).into(),
                 Span::raw(match p["player"].as_i64() { Some(i) if i >= 0 => format!("P{}", i + 1), _ => "-".into() }).into(),
                 Span::raw(p["name"].as_str().unwrap_or("").to_string()).into(),
-                Span::raw(p["address"].as_str().unwrap_or("").to_string()).into(),
+                Span::raw(tag_address(p["address"].as_str().unwrap_or(""), &addrs)).into(),
                 Span::styled(format!("{rtt} ms"), rtt_style).into(),
                 Span::raw(format!("{:.1}%", p["packet_loss"].as_f64().unwrap_or(0.0) * 100.0)).into(),
                 Span::raw(format!("{}m{:02}s", since / 60, since % 60)).into(),
             ])));
         }
     }
-    let t = Table::new(rows, [Constraint::Length(22), Constraint::Length(4), Constraint::Length(16), Constraint::Length(22), Constraint::Length(8), Constraint::Length(7), Constraint::Min(8)])
+    let t = Table::new(rows, [Constraint::Length(22), Constraint::Length(4), Constraint::Length(16), Constraint::Length(44), Constraint::Length(8), Constraint::Length(7), Constraint::Min(8)])
         .header(Row::new(vec!["Server", "Seat", "Name", "Address", "RTT", "Loss", "Connected"]).style(bold))
         .block(Block::bordered().title(" Connections "));
     f.render_widget(t, peers);
@@ -700,4 +732,22 @@ fn main() {
     }
     ratatui::restore();
     hard_exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nat_gateway_detection() {
+        let server = vec!["172.19.0.2".to_string(), "127.0.0.1".to_string()];
+        assert!(is_nat_gateway("172.19.0.1", &server));
+        assert!(!is_nat_gateway("172.19.0.5", &server));
+        assert!(!is_nat_gateway("50.47.158.60", &server));
+        assert!(!is_nat_gateway("192.168.0.1", &[]));
+        assert!(is_nat_gateway("172.20.0.1", &[]));
+        assert!(is_nat_gateway("10.42.0.1", &["10.42.0.7".to_string()]));
+        assert_eq!(tag_address("50.47.158.60:7777", &server), "50.47.158.60:7777");
+        assert!(tag_address("172.19.0.1:5000", &server).contains("Docker NAT"));
+    }
 }

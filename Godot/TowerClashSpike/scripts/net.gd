@@ -360,6 +360,8 @@ func _status_snapshot() -> Dictionary:
 		"eos_state": Online.STATE_IN_MATCH if state == "in_match" else Online.STATE_OPEN,
 		"state": state, "matches_played": _matches, "uptime_s": int(_wall),
 		"now_unix": Time.get_unix_time_from_system(), "peers": peers, "match": match_info_out,
+		# Lets the monitor spot NAT gateways (e.g. Docker Desktop shows every client as x.y.0.1).
+		"local_addresses": Array(IP.get_local_addresses()).filter(func(a: String): return not a.contains(":")),
 	}
 
 
